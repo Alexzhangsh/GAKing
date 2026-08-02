@@ -1,0 +1,17 @@
+{
+  "order_id": "GAK2026073100001",
+  "user_id": 10001,
+  "item_id": "MIAO20260731001",
+  "pay_amount": 39.90,
+  "settle_commission": 9.98,
+  "platform_commission": 1.99,
+  "user_income": 7.99,
+  "order_status": "PAID",
+  "cps_order_status": "SUCCESS",
+  "pay_time": "2026-07-31 14:20:35",
+  "settle_time": null,
+  "transfer_status": "PENDING",
+  "wx_transfer_batch_id": null,
+  "transfer_scene_id": "1005",
+  "remark": "CPS导购佣金自动发放"
+}

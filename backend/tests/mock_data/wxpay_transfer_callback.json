@@ -1,0 +1,30 @@
+{
+  "event_type": "TRANSFER.BATCH.SUCCESS",
+  "resource_type": "encrypt-resource",
+  "resource": {
+    "algorithm": "AEAD_AES_256_GCM",
+    "nonce": "66B6F9F8xxxx",
+    "ciphertext": "加密密文仅做占位，后端解密逻辑由Trae实现",
+    "associated_data": ""
+  },
+  "decrypt_payload": {
+    "batch_id": "202607314200140401401",
+    "mchid": "1115468658",
+    "batch_name": "金角大王CPS佣金发放",
+    "batch_remark": "导购订单佣金自动打款",
+    "total_amount": 799,
+    "total_num": 1,
+    "create_time": "2026-07-31T14:22:10+08:00",
+    "batch_status": "FINISHED",
+    "transfer_detail_list": [
+      {
+        "out_detail_no": "GAK2026073100001",
+        "transfer_amount": 799,
+        "transfer_status": "SUCCESS",
+        "payment_time": "2026-07-31T14:22:15+08:00",
+        "remark": "订单GAK2026073100001佣金结算"
+      }
+    ],
+    "transfer_scene_id": "1005"
+  }
+}

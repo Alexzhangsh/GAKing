@@ -1,0 +1,36 @@
+# @ai-generated
+# ============================================================
+# 华为云CDN证书同步 - 告警配置模板
+# ============================================================
+# 使用方法：
+#   1. 复制本文件为 /etc/cdn_cert_alert_config
+#   2. 填写实际的Webhook地址
+#   3. 在 sync_huawei_cdn_cert.sh 中引用此配置
+# ============================================================
+
+# ---------- 企业微信机器人 Webhook ----------
+# 获取方式：企业微信群 -> 右上角 -> 群机器人 -> 添加机器人 -> 复制Webhook地址
+# 示例: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+WECOM_WEBHOOK=""
+
+# ---------- 钉钉群机器人 Webhook ----------
+# 获取方式：钉钉群 -> 群设置 -> 智能群助手 -> 添加机器人 -> 自定义 -> 复制Webhook地址
+# 示例: https://oapi.dingtalk.com/robot/send?access_token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DINGTALK_WEBHOOK=""
+
+# ---------- 告警级别阈值 ----------
+# 证书剩余天数警告阈值（天）
+WARN_DAYS=30
+
+# 证书剩余天数严重阈值（天）
+CRIT_DAYS=7
+
+# ---------- 同步重试配置 ----------
+# 最大重试次数
+MAX_RETRIES=3
+
+# 重试间隔（秒）
+RETRY_DELAY=10
+
+# CDN传播等待时间（秒）- 更新后等待多久验证
+CDN_PROPAGATION_DELAY=60

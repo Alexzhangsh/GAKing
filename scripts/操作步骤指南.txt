@@ -1,0 +1,82 @@
+# ============================================================
+# 金角大王CPS返利小程序 - 本地开发极简操作指南
+# 零基础可看懂，复制命令即可执行
+# ============================================================
+
+【前置条件】
+1. 已安装 MySQL（用户名：root，密码：123456，端口：3306）
+2. 已安装 Redis（端口：6379，无密码）
+3. 已安装 Python 3.10+ 和 Node.js 16+
+
+【操作步骤】
+
+---
+步骤1：填写环境配置文件
+---
+打开文件：backend/.env.development
+按照文件内的注释说明，填写你的数据库密码等信息
+（开发环境默认已填好测试值，可直接使用）
+
+---
+步骤2：一键初始化数据库
+---
+打开终端，执行以下命令：
+cd GAKing-Coding/backend/scripts
+bash init_db_auto.sh
+
+等待脚本执行完成，看到"数据库初始化完成！"即可
+
+---
+步骤3：一键启动所有服务
+---
+打开终端，执行以下命令：
+cd GAKing-Coding/scripts
+bash start_all.sh
+
+等待脚本执行完成，看到"所有服务启动完成！"即可
+
+---
+步骤4：执行自动化测试脚本
+---
+打开终端，执行以下命令：
+cd GAKing-Coding/backend
+python tests/test_infra_all.py
+
+等待测试完成，查看测试报告
+
+---
+步骤5：访问各服务
+---
+后端服务：http://localhost:3001
+Admin管理后台：http://localhost:5173
+小程序H5预览：http://localhost:5173
+
+---
+步骤6：停止服务（开发完成后）
+---
+打开终端，执行以下命令：
+cd GAKing-Coding/scripts
+bash stop_all.sh
+
+---
+
+【常见问题排查】
+
+1. MySQL连接失败
+   - 检查MySQL是否启动：brew services start mysql
+   - 检查密码是否正确：修改backend/.env.development中的DB_PASSWORD
+
+2. Redis连接失败
+   - 检查Redis是否启动：brew services start redis
+   - 检查端口是否正确：默认6379
+
+3. 端口被占用
+   - 修改backend/.env.development中的PORT配置
+
+4. 前端页面无法访问
+   - 检查后端服务是否启动
+   - 检查防火墙设置
+
+5. 测试用例失败
+   - 根据测试报告中的"建议"字段排查
+   - 检查对应服务是否正常运行

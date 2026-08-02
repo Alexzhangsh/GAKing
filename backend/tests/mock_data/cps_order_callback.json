@@ -1,0 +1,14 @@
+{
+  "order_sn": "M2026073114203588991",
+  "goods_id": "MIAO20260731001",
+  "goods_title": "居家日用超值好物",
+  "pay_price": 39.90,
+  "commission_rate": 0.25,
+  "commission": 9.98,
+  "order_status": "已结算",
+  "pay_time": "2026-07-31 14:20:35",
+  "settle_time": "2026-08-02 00:10:22",
+  "uid": "u10001",
+  "source": "miaoyouquan",
+  "sign": "校验签名占位，Trae实现验签逻辑"
+}
