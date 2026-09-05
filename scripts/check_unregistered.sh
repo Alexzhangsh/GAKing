@@ -16,8 +16,8 @@ cd "$REPO"
 REGISTERED=$(grep -oE '^\| *[A-Z]+[0-9]+(-[0-9]+)* *\|' "$LIST" | sed -E 's/^\| *//; s/ *\|$//' | sort -u)
 # 交接单中引用的 git commit（经交接单关联视为已登记，如"完整变更范围 = git commit 0e2c18c"）
 KNOWN_COMMITS=$(grep -rhoE "git commit [0-9a-f]{7,40}" "$REPO/docs/发布协作/交接单/" 2>/dev/null | grep -oE "[0-9a-f]{7,40}" | sort -u)
-# 已确认豁免的提交（人工确认过无需登记：如项目初始化）
-EXEMPT_PATTERNS="初始化金角大王|chore: 初始化"
+# 已确认豁免的提交（人工确认过无需登记：如项目初始化、纯文档提交）
+EXEMPT_PATTERNS="初始化金角大王|chore: 初始化|^docs:"
 
 echo "=== 已登记批次 ==="
 echo "${REGISTERED:-（清单为空）}" | sed 's/^/  /'
