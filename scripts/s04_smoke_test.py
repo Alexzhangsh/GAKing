@@ -49,9 +49,9 @@ else: fail("/readyz", str(checks))
 
 # 2. 管理员登录
 print("\n--- 2. 管理员登录 ---")
-code, data = api("POST", "/api/v1/admin/auth/login", body={"username": "admin", "password": "admin@12345"})
+code, data = api("POST", "/api/v1/admin/auth/login", body={"username": "admin", "password": "alex@gak"})
 TOKEN = data.get("data", {}).get("token", "")
-if TOKEN: ok("管理员登录 admin/admin@12345")
+if TOKEN: ok("管理员登录 admin/alex@gak")
 else: fail("管理员登录", str(data))
 
 code, data = api("GET", "/api/v1/admin/auth/me", token=TOKEN)

@@ -2,7 +2,7 @@
 echo "=== 验证后端接口 ==="
 RESULT=$(curl -s -X POST http://127.0.0.1:3003/api/v1/admin/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin@12345"}')
+  -d '{"username":"admin","password":"alex@gak"}')
 echo "登录: $(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'code={d.get(\"code\")}, msg={d.get(\"msg\")}')")"
 TOKEN=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('token',''))")
 

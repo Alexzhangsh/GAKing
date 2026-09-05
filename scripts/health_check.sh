@@ -139,7 +139,7 @@ echo ""
 echo "▸ 5. 管理员登录功能验证"
 LOGIN_RESP=$(curl -s -X POST "$BASE_URL/api/v1/admin/auth/login" \
     -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"admin@12345"}' 2>/dev/null || echo "{}")
+    -d '{"username":"admin","password":"alex@gak"}' 2>/dev/null || echo "{}")
 LOGIN_CODE=$(echo "$LOGIN_RESP" | python3 -c "import sys,json;print(json.load(sys.stdin).get('code',0))" 2>/dev/null || echo "0")
 if [ "$LOGIN_CODE" == "200" ]; then
     ROLE=$(echo "$LOGIN_RESP" | python3 -c "import sys,json;print(json.load(sys.stdin).get('data',{}).get('role_name',''))" 2>/dev/null || echo "")

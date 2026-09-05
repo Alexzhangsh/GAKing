@@ -84,7 +84,7 @@ else:
 # 2. 管理员登录与权限
 print("\n--- 2. 管理员登录与权限 ---")
 code, data = api("POST", "/api/v1/admin/auth/login",
-                 body={"username": "admin", "password": "admin@12345"})
+                 body={"username": "admin", "password": "alex@gak"})
 TOKEN = data.get("data", {}).get("token", "") if isinstance(data.get("data"), dict) else ""
 if TOKEN:
     ok("管理员登录成功")

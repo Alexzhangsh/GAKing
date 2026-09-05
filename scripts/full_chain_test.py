@@ -29,7 +29,7 @@ WARN = 0
 results = []  # (level, name, detail)
 
 ADMIN_USER = "admin"
-ADMIN_PASS = "admin@12345"
+ADMIN_PASS = "alex@gak"
 
 # ─── 工具函数 ───────────────────────────────────────────────
 def ok(msg, detail=""):
