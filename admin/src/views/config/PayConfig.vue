@@ -30,8 +30,8 @@
         <el-table-column prop="create_time" label="创建时间" width="180" />
         <el-table-column label="操作" width="180">
           <template #default="scope">
-            <el-button size="small" @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(scope.row)">删除</el-button>
+            <el-button size="small" @click="handleEdit(scope.row as unknown as PayConfig)">编辑</el-button>
+            <el-button size="small" type="danger" @click="handleDelete(scope.row as unknown as PayConfig)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -69,13 +69,13 @@
           <el-input v-model="form.notify_url" placeholder="请输入回调地址" />
         </el-form-item>
         <el-form-item label="提现费率">
-          <el-input-number v-model="form.withdraw_rate" :precision="2" :min="0" :max="1" step="0.01" />
+          <el-input-number v-model="form.withdraw_rate" :precision="2" :min="0" :max="1" :step="0.01" />
         </el-form-item>
         <el-form-item label="最低提现金额">
-          <el-input-number v-model="form.withdraw_min" :precision="2" :min="0" step="0.01" />
+          <el-input-number v-model="form.withdraw_min" :precision="2" :min="0" :step="0.01" />
         </el-form-item>
         <el-form-item label="固定手续费">
-          <el-input-number v-model="form.withdraw_fixed_fee" :precision="2" :min="0" step="0.01" />
+          <el-input-number v-model="form.withdraw_fixed_fee" :precision="2" :min="0" :step="0.01" />
         </el-form-item>
         <el-form-item label="状态">
           <el-switch v-model="form.status" />
@@ -121,7 +121,7 @@ const form = reactive({
 
 const loadData = async () => {
   const res = await payConfigApi.list({ page: page.value, page_size: pageSize.value })
-  tableData.value = res.data
+  tableData.value = res.data ?? []
   total.value = res.total
 }
 

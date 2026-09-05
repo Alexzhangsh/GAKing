@@ -1,0 +1,16 @@
+# @ai-generated
+# Docker 构建忽略文件
+node_modules/
+dist/
+.git/
+.gitignore
+*.md
+.DS_Store
+.trae/
+.idea/
+.vscode/
+__pycache__/
+*.log
+.env
+.env.*
+!.env.example

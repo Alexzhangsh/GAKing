@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from sqlalchemy import select
 
 from src.db.init_db import DatabaseManager
-from src.db.models import GakingChannelMapping
+from src.models.system.channel_config import ChannelMapping as GakingChannelMapping
 from src.common.redis_client import RedisClient
 from src.config.constants import CACHE_KEY_CHANNEL_MAPPING, ChannelCode
 

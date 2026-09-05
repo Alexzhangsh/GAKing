@@ -12,14 +12,13 @@
         <el-table-column prop="config_key" label="配置键名" />
         <el-table-column prop="config_name" label="配置名称" />
         <el-table-column prop="config_value" label="配置值" show-overflow-tooltip />
-        <el-table-column prop="config_desc" label="配置说明" show-overflow-tooltip />
-        <el-table-column prop="sort_num" label="排序" width="80" />
+        <el-table-column prop="remark" label="配置说明" show-overflow-tooltip />
         <el-table-column prop="create_time" label="创建时间" width="180" />
         <el-table-column prop="update_time" label="更新时间" width="180" />
         <el-table-column label="操作" width="180">
           <template #default="scope">
-            <el-button size="small" @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(scope.row)">删除</el-button>
+            <el-button size="small" @click="handleEdit(scope.row as unknown as SystemConfig)">编辑</el-button>
+            <el-button size="small" type="danger" @click="handleDelete(scope.row as unknown as SystemConfig)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -38,7 +37,7 @@
     </el-card>
     
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
-      <el-form :model="form" ref="formRef" label-width="100px">
+      <el-form :model="form" ref="formRef" :rules="rules" label-width="100px">
         <el-form-item label="配置键名" prop="config_key">
           <el-input v-model="form.config_key" placeholder="请输入配置键名" />
         </el-form-item>
@@ -49,10 +48,7 @@
           <el-input v-model="form.config_value" type="textarea" :rows="4" placeholder="请输入配置值" />
         </el-form-item>
         <el-form-item label="配置说明">
-          <el-input v-model="form.config_desc" type="textarea" :rows="2" placeholder="请输入配置说明" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="form.sort_num" :min="0" />
+          <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="请输入配置说明" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -65,8 +61,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElCard, ElTable, ElTableColumn, ElButton, ElPagination, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElMessage } from 'element-plus'
-import { systemConfigApi, type SystemConfig, type SystemConfigCreate, type SystemConfigUpdate } from '@/api/config'
+import { ElCard, ElTable, ElTableColumn, ElButton, ElPagination, ElDialog, ElForm, ElFormItem, ElInput, ElMessage } from 'element-plus'
+import { systemConfigApi, type SystemConfig, type SystemConfigCreate } from '@/api/config'
 
 const tableData = ref<SystemConfig[]>([])
 const page = ref(1)
@@ -75,14 +71,13 @@ const total = ref(0)
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增配置')
 const formRef = ref()
-const editingId = ref<number | null>(null)
+const editingKey = ref<string | null>(null)
 
 const form = reactive({
   config_key: '',
   config_value: '',
   config_name: '',
-  config_desc: '',
-  sort_num: 0
+  remark: ''
 })
 
 const rules = {
@@ -92,32 +87,30 @@ const rules = {
 
 const loadData = async () => {
   const res = await systemConfigApi.list({ page: page.value, page_size: pageSize.value })
-  tableData.value = res.data
+  tableData.value = res.items ?? []
   total.value = res.total
 }
 
 const handleAdd = () => {
-  editingId.value = null
+  editingKey.value = null
   dialogTitle.value = '新增配置'
   Object.assign(form, {
     config_key: '',
     config_value: '',
     config_name: '',
-    config_desc: '',
-    sort_num: 0
+    remark: ''
   })
   dialogVisible.value = true
 }
 
 const handleEdit = (row: SystemConfig) => {
-  editingId.value = row.id
+  editingKey.value = row.config_key
   dialogTitle.value = '编辑配置'
   Object.assign(form, {
     config_key: row.config_key,
     config_value: row.config_value,
     config_name: row.config_name,
-    config_desc: row.config_desc,
-    sort_num: row.sort_num
+    remark: row.remark
   })
   dialogVisible.value = true
 }
@@ -128,8 +121,8 @@ const handleSubmit = async () => {
   await formRef.value.validate(async (valid: boolean) => {
     if (valid) {
       try {
-        if (editingId.value) {
-          await systemConfigApi.update(editingId.value, form)
+        if (editingKey.value) {
+          await systemConfigApi.update(editingKey.value, form)
           ElMessage.success('更新成功')
         } else {
           await systemConfigApi.create(form as SystemConfigCreate)
@@ -146,7 +139,7 @@ const handleSubmit = async () => {
 
 const handleDelete = async (row: SystemConfig) => {
   try {
-    await systemConfigApi.delete(row.id)
+    await systemConfigApi.delete(row.config_key)
     ElMessage.success('删除成功')
     await loadData()
   } catch (e) {

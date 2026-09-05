@@ -26,8 +26,8 @@
         <el-table-column prop="create_time" label="创建时间" width="180" />
         <el-table-column label="操作" width="180">
           <template #default="scope">
-            <el-button size="small" @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(scope.row)">删除</el-button>
+            <el-button size="small" @click="handleEdit(scope.row as unknown as CloudConfig)">编辑</el-button>
+            <el-button size="small" type="danger" @click="handleDelete(scope.row as unknown as CloudConfig)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -46,7 +46,7 @@
     </el-card>
     
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px">
-      <el-form :model="form" ref="formRef" label-width="120px">
+      <el-form :model="form" ref="formRef" :rules="rules" label-width="120px">
         <el-form-item label="配置名称" prop="config_name">
           <el-input v-model="form.config_name" placeholder="请输入配置名称" />
         </el-form-item>
@@ -111,7 +111,7 @@ const rules = {
 
 const loadData = async () => {
   const res = await cloudConfigApi.list({ page: page.value, page_size: pageSize.value })
-  tableData.value = res.data
+  tableData.value = res.data ?? []
   total.value = res.total
 }
 

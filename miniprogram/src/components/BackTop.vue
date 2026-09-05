@@ -18,8 +18,10 @@ let scrollTop = 0
 const handleScroll = () => {
   const query = uni.createSelectorQuery()
   query.selectViewport().scrollOffset((res) => {
-    if (res) {
-      scrollTop = res.scrollTop
+    // res 类型为 NodeInfo | NodeInfo[]，取单个节点的 scrollTop
+    const node = Array.isArray(res) ? res[0] : res
+    if (node && typeof node.scrollTop === 'number') {
+      scrollTop = node.scrollTop
       visible.value = scrollTop > 400
     }
   }).exec()

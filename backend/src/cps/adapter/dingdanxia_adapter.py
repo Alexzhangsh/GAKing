@@ -203,8 +203,16 @@ class DingdanxiaAdapter(BaseCpsAdapter):
             )
 
         result_data = data.get("data", {})
+        promote_url = str(result_data.get("share_url", ""))
+        if not promote_url:
+            raise CpsChannelException(
+                error_type=CpsErrorType.API_ERROR,
+                message="订单侠转链结果缺少推广链接（share_url 为空）",
+                channel_name=self.get_channel_name(),
+                raw_response=data,
+            )
         convert_result = ConvertLinkResult(
-            promote_url=str(result_data.get("share_url", "")),
+            promote_url=promote_url,
             channel_pid=str(result_data.get("relation_id", user_channel_id)),
             estimate_commission=Decimal(str(result_data.get("commission", "0"))),
             goods_id=str(result_data.get("item_id", "")),

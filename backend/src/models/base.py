@@ -5,7 +5,7 @@
 扩展 to_dict 序列化混入、软删除查询过滤、通用分页查询辅助方法
 """
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -45,6 +45,8 @@ class SerializableMixin:
             value = getattr(self, column.name, None)
             if isinstance(value, datetime):
                 result[column.name] = value.strftime("%Y-%m-%d %H:%M:%S")
+            elif isinstance(value, date):
+                result[column.name] = value.isoformat()
             elif isinstance(value, Decimal):
                 result[column.name] = float(value)
             elif isinstance(value, bool):

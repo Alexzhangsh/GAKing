@@ -1,0 +1,220 @@
+# @ai-generated
+"""
+B14-补全 数据大盘 Service
+业务逻辑层：首页卡片聚合、多维度佣金统计、订单趋势折线
+所有查询带 5 分钟 Redis 缓存，避免高频聚合压垮 DB
+"""
+import json
+import logging
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+from src.common.b14_audit_util import AuditLogger
+from src.common.redis_client import RedisClient
+from src.config.b13_b14_constants import (
+    B13B14AuditAction,
+    CACHE_KEY_DASHBOARD_CARDS,
+    CACHE_KEY_DASHBOARD_COMMISSION,
+    CACHE_KEY_DASHBOARD_ORDER_TREND,
+    CACHE_TTL_DASHBOARD,
+)
+from src.dao.dashboard_query_dao import DashboardQueryDAO
+from src.db.base import DatabaseManager
+
+logger = logging.getLogger("services.b14_dashboard")
+
+
+class B14DashboardService:
+    """数据大盘 Service"""
+
+    @classmethod
+    async def get_cards_data(cls, admin_user_id: int = 0) -> Dict[str, Any]:
+        """首页 5 张卡片聚合数据（带 Redis 缓存）"""
+        # 1. 先读缓存
+        try:
+            cached = await RedisClient.get(CACHE_KEY_DASHBOARD_CARDS)
+            if cached:
+                data = json.loads(cached)
+                await cls._audit_query(admin_user_id, "cards", {"cache_hit": True})
+                return data
+        except Exception as e:
+            logger.warning("[get_cards_data] 缓存读取失败: %s", e)
+
+        # 2. 缓存未命中，查 DB
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+            data = await dao.get_cards_data()
+
+        # 3. 写缓存（fire-and-forget）
+        try:
+            await RedisClient.set(
+                CACHE_KEY_DASHBOARD_CARDS,
+                json.dumps(data, ensure_ascii=False),
+                ex=CACHE_TTL_DASHBOARD,
+            )
+        except Exception as e:
+            logger.warning("[get_cards_data] 缓存写入失败: %s", e)
+
+        await cls._audit_query(admin_user_id, "cards", {"cache_hit": False})
+        return data
+
+    @classmethod
+    async def get_commission_stats(
+        cls,
+        group_by: str,
+        start_date: datetime,
+        end_date: datetime,
+        page: int = 1,
+        page_size: int = 20,
+        admin_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        """多维度佣金统计（按日期/渠道/用户分组）
+
+        Args:
+            group_by: date / channel / user
+            start_date: 起始日期（含）
+            end_date: 截止日期（不含）
+        """
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+
+            if group_by == "date":
+                items = await dao.get_commission_stats_by_date(start_date, end_date)
+                result = {
+                    "group_by": "date",
+                    "start_date": start_date.strftime("%Y-%m-%d"),
+                    "end_date": end_date.strftime("%Y-%m-%d"),
+                    "total": len(items),
+                    "items": items,
+                }
+            elif group_by == "channel":
+                items = await dao.get_commission_stats_by_channel(start_date, end_date)
+                result = {
+                    "group_by": "channel",
+                    "start_date": start_date.strftime("%Y-%m-%d"),
+                    "end_date": end_date.strftime("%Y-%m-%d"),
+                    "total": len(items),
+                    "items": items,
+                }
+            elif group_by == "user":
+                paged = await dao.get_commission_stats_by_user(
+                    start_date, end_date, page=page, page_size=page_size
+                )
+                result = {
+                    "group_by": "user",
+                    "start_date": start_date.strftime("%Y-%m-%d"),
+                    "end_date": end_date.strftime("%Y-%m-%d"),
+                    "total": paged["total"],
+                    "page": paged["page"],
+                    "page_size": paged["page_size"],
+                    "items": paged["items"],
+                }
+            else:
+                raise ValueError(
+                    f"不支持的 group_by: {group_by}，可选值: date/channel/user"
+                )
+
+        await cls._audit_query(
+            admin_user_id,
+            "commission_stats",
+            {
+                "group_by": group_by,
+                "start_date": start_date.strftime("%Y-%m-%d"),
+                "end_date": end_date.strftime("%Y-%m-%d"),
+            },
+        )
+        return result
+
+    @classmethod
+    async def get_order_trend(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        group_by: str = "day",
+        admin_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        """订单趋势折线数据（按天/周/月分组）
+
+        Args:
+            group_by: day / week / month
+        """
+        if group_by not in ("day", "week", "month"):
+            raise ValueError(f"不支持的 group_by: {group_by}，可选值: day/week/month")
+
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+            items = await dao.get_order_trend(start_date, end_date, group_by=group_by)
+
+        result = {
+            "group_by": group_by,
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "end_date": end_date.strftime("%Y-%m-%d"),
+            "total": len(items),
+            "items": items,
+        }
+
+        await cls._audit_query(
+            admin_user_id,
+            "order_trend",
+            {
+                "granularity": group_by,
+                "start_date": start_date.strftime("%Y-%m-%d"),
+                "end_date": end_date.strftime("%Y-%m-%d"),
+            },
+        )
+        return result
+
+    @classmethod
+    async def get_withdraw_trend(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        group_by: str = "day",
+        admin_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        """提现趋势折线数据（按天/周/月分组）
+
+        Args:
+            group_by: day / week / month
+        """
+        if group_by not in ("day", "week", "month"):
+            raise ValueError(f"不支持的 group_by: {group_by}，可选值: day/week/month")
+
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+            items = await dao.get_withdraw_trend(start_date, end_date, group_by=group_by)
+
+        result = {
+            "group_by": group_by,
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "end_date": end_date.strftime("%Y-%m-%d"),
+            "total": len(items),
+            "items": items,
+        }
+
+        await cls._audit_query(
+            admin_user_id,
+            "withdraw_trend",
+            {
+                "granularity": group_by,
+                "start_date": start_date.strftime("%Y-%m-%d"),
+                "end_date": end_date.strftime("%Y-%m-%d"),
+            },
+        )
+        return result
+
+    @classmethod
+    async def _audit_query(
+        cls, admin_user_id: int, query_type: str, details: Dict[str, Any]
+    ) -> None:
+        """记录数据大盘访问日志（fire-and-forget，失败不阻塞）"""
+        try:
+            await AuditLogger.log(
+                action=B13B14AuditAction.DASHBOARD_QUERY.value,
+                target_type="dashboard",
+                target_id=0,
+                details={"query_type": query_type, **details},
+                user_id=admin_user_id,
+            )
+        except Exception as e:
+            logger.warning("[_audit_query] 审计日志写入失败: %s", e)

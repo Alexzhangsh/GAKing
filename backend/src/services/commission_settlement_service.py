@@ -27,7 +27,9 @@ from src.dao.commission_settlement_dao import (
 from src.dao.order_dao import OrderDAO
 from src.services.commission_rule_engine import (
     CommissionRuleEngine,
-    resolve_user_type,
+    CommissionSplit,
+    get_member_commission_rate,
+    resolve_user_type_async,
 )
 
 logger = logging.getLogger("service.commission_settlement")
@@ -51,6 +53,29 @@ class CommissionSettlementService:
         self.flow_dao = flow_dao
         self.settlement_dao = settlement_dao
         self.rule_engine = rule_engine
+
+    # ── 0. 分佣比例解析（会员档位优先） ──────────────────────────
+
+    async def _resolve_split(self, order) -> CommissionSplit:
+        """解析订单佣金拆分比例
+
+        X02-1 会员档位佣金策略：
+        1. 用户存在生效会员记录 → 直接使用会员套餐分佣比例（user_rate=档位比例）
+        2. 否则按渠道配置 + 用户类型（NORMAL/VIP）解析
+        """
+        # X02-1：会员套餐分佣
+        member_rate = await get_member_commission_rate(order.user_id)
+        if member_rate is not None:
+            user_rate = member_rate
+            platform_rate = Decimal("1.0") - member_rate
+            logger.info(
+                "[settle] 会员档位分佣 order_id=%s user_id=%s user_rate=%s platform_rate=%s",
+                order.id, order.user_id, user_rate, platform_rate,
+            )
+            return CommissionSplit(user_rate=user_rate, platform_rate=platform_rate)
+
+        user_type = await resolve_user_type_async(order.user_id)
+        return await self.rule_engine.get_rates(order.channel_code, user_type)
 
     # ── 1. 批量结算 ────────────────────────────────────────────
 
@@ -176,9 +201,8 @@ class CommissionSettlementService:
                     "message": "订单已结算，幂等跳过",
                 }
 
-        # 规则引擎计算佣金
-        user_type = resolve_user_type(order.user_id)
-        split = await self.rule_engine.get_rates(order.channel_code, user_type)
+        # 规则引擎计算佣金（会员档位分佣优先）
+        split = await self._resolve_split(order)
         result = self.rule_engine.calculate(Decimal(str(order.total_commission)), split)
         user_commission = result.user_commission
 
@@ -396,9 +420,8 @@ class CommissionSettlementService:
         if any(f.flow_type == FLOW_TYPE_ORDER for f in flows):
             raise ValueError(f"订单已生成佣金流水，锁定不可重算: order_id={order_id}")
 
-        # 规则引擎重算
-        user_type = resolve_user_type(order.user_id)
-        split = await self.rule_engine.get_rates(order.channel_code, user_type)
+        # 规则引擎重算（会员档位分佣优先）
+        split = await self._resolve_split(order)
         result = self.rule_engine.calculate(Decimal(str(order.total_commission)), split)
 
         old_user = Decimal(str(order.user_commission))

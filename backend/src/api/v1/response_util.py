@@ -7,7 +7,7 @@ import logging
 import uuid
 from typing import Any, Optional
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from src.schemas.cps import ApiResponse
@@ -52,9 +52,18 @@ def handle_service_exception(
 ) -> JSONResponse:
     """统一业务异常处理
 
+    HTTPException → 与 HTTP 状态码对齐（401/403/404/423 等）
     ValueError → 400 参数/业务校验错误
     其他异常 → 500 服务异常
     """
+    if isinstance(exc, HTTPException):
+        return error_response(
+            code=exc.status_code,
+            msg=str(exc.detail) if exc.detail else "请求错误",
+            request_id=request_id,
+            http_status=exc.status_code,
+        )
+
     if isinstance(exc, ValueError):
         logger.warning("[request_id=%s] 业务校验失败: %s", request_id, exc)
         return error_response(code=400, msg=str(exc), request_id=request_id)

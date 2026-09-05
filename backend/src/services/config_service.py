@@ -4,12 +4,10 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
-from src.db.models import (
-    GakingSystemConfig,
-    GakingPayConfig,
-    GakingCloudConfig,
-    GakingChannelMapping,
-)
+from src.models.system.system_config import SystemConfig as GakingSystemConfig
+from src.models.system.pay_config import PayConfig as GakingPayConfig
+from src.models.system.cloud_config import CloudConfig as GakingCloudConfig
+from src.models.system.channel_config import ChannelMapping as GakingChannelMapping
 from src.schemas.config import (
     SystemConfigCreate,
     SystemConfigUpdate,

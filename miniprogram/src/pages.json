@@ -3,25 +3,184 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "金角大王"
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "金角大王",
+        "enablePullDownRefresh": false
+      }
+    },
+    {
+      "path": "pages/favorite/list",
+      "style": {
+        "navigationBarTitleText": "我的收藏",
+        "navigationBarBackgroundColor": "#ffffff",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/member/index",
+      "style": {
+        "navigationBarTitleText": "会员中心",
+        "navigationBarBackgroundColor": "#ffffff",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationBarBackgroundColor": "#ffd400",
+        "navigationBarTextStyle": "black",
+        "disableScroll": true
       }
     },
     {
       "path": "pages/mine/mine",
       "style": {
-        "navigationBarTitleText": "我的"
+        "navigationBarTitleText": "我的",
+        "navigationBarBackgroundColor": "#ffd400",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/user/profile",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "个人资料",
+        "enablePullDownRefresh": false
+      }
+    },
+    {
+      "path": "pages/webview/index",
+      "style": {
+        "navigationBarTitleText": "详情",
+        "navigationBarBackgroundColor": "#ffffff",
+        "navigationBarTextStyle": "black"
+      }
+    },
+    {
+      "path": "pages/webview/external",
+      "style": {
+        "navigationBarTitleText": "去购买",
+        "navigationBarBackgroundColor": "#ffffff",
+        "navigationBarTextStyle": "black"
       }
     }
   ],
+  "subPackages": [
+    {
+      "root": "pages/search",
+      "pages": [
+        {
+          "path": "list",
+          "style": {
+            "navigationBarTitleText": "搜索商品",
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/product",
+      "pages": [
+        {
+          "path": "detail",
+          "style": {
+            "navigationBarTitleText": "商品详情",
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/order",
+      "pages": [
+        {
+          "path": "list",
+          "style": {
+            "navigationBarTitleText": "我的订单",
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black"
+          }
+        },
+        {
+          "path": "detail",
+          "style": {
+            "navigationBarTitleText": "订单详情",
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/commission",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationBarTitleText": "我的佣金",
+            "navigationBarBackgroundColor": "#111111",
+            "navigationBarTextStyle": "white"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/withdraw",
+      "pages": [
+        {
+          "path": "apply",
+          "style": {
+            "navigationBarTitleText": "申请提现",
+            "navigationBarBackgroundColor": "#111111",
+            "navigationBarTextStyle": "white"
+          }
+        },
+        {
+          "path": "list",
+          "style": {
+            "navigationBarTitleText": "提现记录",
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/message",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationBarTitleText": "消息中心",
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black"
+          }
+        }
+      ]
+    }
+  ],
+  "preloadRule": {
+    "pages/index/index": {
+      "network": "all",
+      "packages": ["pages/search", "pages/product"]
+    },
+    "pages/mine/mine": {
+      "network": "wifi",
+      "packages": ["pages/order", "pages/commission", "pages/withdraw"]
+    }
+  },
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "金角大王",
     "navigationBarBackgroundColor": "#ffffff",
-    "backgroundColor": "#f5f5f5"
+    "backgroundColor": "#f2f3f5"
   },
   "tabBar": {
     "color": "#999999",
-    "selectedColor": "#ff6b00",
+    "selectedColor": "#1a1a1a",
     "backgroundColor": "#ffffff",
     "borderStyle": "black",
     "list": [
@@ -30,6 +189,18 @@
         "text": "首页",
         "iconPath": "static/tab/home.png",
         "selectedIconPath": "static/tab/home-active.png"
+      },
+      {
+        "pagePath": "pages/favorite/list",
+        "text": "收藏",
+        "iconPath": "static/tab/favo.png",
+        "selectedIconPath": "static/tab/favo-active.png"
+      },
+      {
+        "pagePath": "pages/member/index",
+        "text": "会员",
+        "iconPath": "static/tab/member.png",
+        "selectedIconPath": "static/tab/member-active.png"
       },
       {
         "pagePath": "pages/mine/mine",

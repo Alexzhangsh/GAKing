@@ -59,7 +59,12 @@ class JwtAuthGuard:
 
 class RbacUtil:
     @classmethod
-    async def get_user_permissions(cls, user_id: int) -> List[str]:
+    async def get_user_permissions(cls, user_id: int, role_id: int = 0) -> List[str]:
+        # C端用户 token 的 role_id=0，与后台管理员 ID 空间重叠，
+        # 必须直接拒绝，防止 C 端用户借 ID 碰撞越权访问后台
+        if role_id == 0:
+            return []
+
         async with DatabaseManager.get_session() as session:
             result = await session.execute(
                 select(AdminUser).where(
@@ -93,23 +98,29 @@ class RbacUtil:
             return []
 
     @classmethod
-    async def has_permission(cls, user_id: int, permission: str) -> bool:
-        permissions = await cls.get_user_permissions(user_id)
+    async def has_permission(
+        cls, user_id: int, permission: str, role_id: int = 0
+    ) -> bool:
+        permissions = await cls.get_user_permissions(user_id, role_id)
         # 通配符 "*" 表示超级管理员，拥有全部权限（向后兼容：无 "*" 时按精确匹配）
         if "*" in permissions:
             return True
         return permission in permissions
 
     @classmethod
-    async def has_any_permission(cls, user_id: int, permissions: List[str]) -> bool:
-        user_permissions = await cls.get_user_permissions(user_id)
+    async def has_any_permission(
+        cls, user_id: int, permissions: List[str], role_id: int = 0
+    ) -> bool:
+        user_permissions = await cls.get_user_permissions(user_id, role_id)
         if "*" in user_permissions:
             return True
         return any(p in user_permissions for p in permissions)
 
     @classmethod
-    async def has_all_permissions(cls, user_id: int, permissions: List[str]) -> bool:
-        user_permissions = await cls.get_user_permissions(user_id)
+    async def has_all_permissions(
+        cls, user_id: int, permissions: List[str], role_id: int = 0
+    ) -> bool:
+        user_permissions = await cls.get_user_permissions(user_id, role_id)
         if "*" in user_permissions:
             return True
         return all(p in user_permissions for p in permissions)
@@ -129,7 +140,10 @@ async def get_current_user(
 
 def require_permission(permission: str):
     async def dependency(payload: dict = Depends(get_current_user)):
-        has_perm = await RbacUtil.has_permission(payload["user_id"], permission)
+        role_id = int(payload.get("role_id", 0) or 0)
+        has_perm = await RbacUtil.has_permission(
+            payload["user_id"], permission, role_id=role_id
+        )
         if not has_perm:
             raise HTTPException(status_code=403, detail="Permission denied")
         return payload
@@ -139,7 +153,10 @@ def require_permission(permission: str):
 
 def require_any_permission(permissions: List[str]):
     async def dependency(payload: dict = Depends(get_current_user)):
-        has_perm = await RbacUtil.has_any_permission(payload["user_id"], permissions)
+        role_id = int(payload.get("role_id", 0) or 0)
+        has_perm = await RbacUtil.has_any_permission(
+            payload["user_id"], permissions, role_id=role_id
+        )
         if not has_perm:
             raise HTTPException(status_code=403, detail="Permission denied")
         return payload

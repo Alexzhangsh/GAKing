@@ -18,6 +18,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.response_util import (
     error_response,
@@ -26,6 +27,7 @@ from src.api.v1.response_util import (
 )
 from src.common.rate_limit_util import RateLimitUtil
 from src.config.constants import RateLimitType
+from src.db.init_db import DatabaseManager
 from src.schemas.cps_goods import (
     BizException,
     ConvertLinkRequest,
@@ -34,6 +36,7 @@ from src.schemas.cps_goods import (
     GoodsSearchResponse,
 )
 from src.services.cps_goods_service import CpsGoodsService
+from src.services.short_link_service import ShortLinkService
 
 logger = logging.getLogger("api.public.cps_goods")
 
@@ -46,6 +49,12 @@ router = APIRouter(prefix="/api/public/goods", tags=["C端商品搜索/转链"])
 def get_cps_goods_service() -> CpsGoodsService:
     """构造 CpsGoodsService 实例"""
     return CpsGoodsService()
+
+
+async def get_db():
+    """异步数据库会话依赖"""
+    async with DatabaseManager.get_session() as session:
+        yield session
 
 
 def _get_limit_key(
@@ -168,12 +177,14 @@ async def convert_link(
     request: Request,
     x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     svc: CpsGoodsService = Depends(get_cps_goods_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    """2. 链接转链接口（转链桶限流 + B01 适配器直调）
+    """2. 链接转链接口（转链桶限流 + B01 适配器直调 + 短链生成）
 
     - 按 user_id/IP 独立限流（100次/分钟）
     - 转链结果不缓存（因 user_channel_id 差异）
     - 直调 B01 适配器 convert_link
+    - 转链成功后自动生成携带用户归属的短链
     """
     request_id = get_request_id(request)
     limit_key = _get_limit_key(x_user_id, request)
@@ -202,6 +213,37 @@ async def convert_link(
 
         # 2. 调用服务层（走 B01 适配器）
         result: ConvertLinkResponse = await svc.convert_link(body)
+
+        # 3. 生成携带用户归属的短链（替换原始 promote_url）
+        if x_user_id and result.goods_id:
+            try:
+                user_id = int(x_user_id)
+                short_link_svc = ShortLinkService(db)
+                short_link = await short_link_svc.create_short_link(
+                    user_id=user_id,
+                    goods_id=result.goods_id,
+                    goods_title="",
+                    channel_code=body.channel_code,
+                    source_url=result.promote_url,
+                )
+                host = str(request.base_url).rstrip("/")
+                short_url = f"{host}/s/{short_link.short_key}"
+                result.promote_url = short_url
+                logger.info(
+                    "[request_id=%s] 短链生成成功: short_key=%s user_id=%s goods_id=%s",
+                    request_id,
+                    short_link.short_key,
+                    user_id,
+                    result.goods_id,
+                )
+            except (ValueError, Exception) as e:
+                logger.warning(
+                    "[request_id=%s] 短链生成失败，继续使用原始推广链接: %s",
+                    request_id,
+                    e,
+                    exc_info=True,
+                )
+                # 短链生成失败不影响转链主流程，继续使用原始 promote_url
 
         return success_response(data=result.model_dump(), request_id=request_id)
 

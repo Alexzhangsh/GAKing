@@ -1,53 +1,80 @@
 <!-- @ai-generated -->
+<!--
+  首页
+  - 自定义导航栏：大标题 + 搜索框
+  - 热门推荐商品流（两列网格布局）
+  - 剪贴板链接检测
+  - 返回顶部组件
+-->
 <template>
   <view class="page-container">
-    <view class="header">
-      <view class="search-bar">
-        <text class="search-icon">🔍</text>
-        <input 
-          class="search-input" 
-          placeholder="搜索商品" 
-          v-model="searchKeyword"
+    <!-- 自定义导航栏 -->
+    <view class="custom-nav" :style="{ paddingTop: statusBarHeight + 'px' }">
+      <view class="nav-title">金角大王</view>
+      <view class="nav-search">
+        <view class="search-icon"><IconLine name="search" style="--size:30rpx" /></view>
+        <input
+          class="search-input"
+          placeholder="搜索商品 / 粘贴淘宝京东链接"
+          :value="searchKeyword"
+          :confirm-type="'search'"
+          @input="handleSearchInput"
           @confirm="handleSearch"
         />
+        <view class="search-btn" @click="handleSearch">
+          <text>搜索</text>
+        </view>
       </view>
     </view>
 
-    <view class="banner">
-      <swiper 
-        class="banner-swiper" 
-        :indicator-dots="true" 
-        :autoplay="true" 
-        :interval="3000" 
-        :circular="true"
-        indicator-color="rgba(255,255,255,0.5)"
-        indicator-active-color="#fff"
-      >
-        <swiper-item v-for="(item, index) in banners" :key="index">
-          <image :src="item.image" mode="aspectFill" class="banner-image" />
-        </swiper-item>
-      </swiper>
-    </view>
-
-    <view class="category">
-      <view class="category-item" v-for="(item, index) in categories" :key="index">
-        <view class="category-icon">{{ item.icon }}</view>
-        <text class="category-name">{{ item.name }}</text>
-      </view>
-    </view>
-
+    <!-- 热门推荐区域 -->
     <view class="section">
       <view class="section-header">
         <text class="section-title">热门推荐</text>
-        <text class="section-more">更多 ›</text>
+        <text class="section-more" @click="handleSearchMore">更多 ›</text>
       </view>
-      <view class="product-list">
-        <ProductCard 
-          v-for="item in products" 
-          :key="item.id" 
-          :item="item"
-          @click="handleProductClick"
-        />
+
+      <!-- 加载中 -->
+      <view v-if="loading && products.length === 0" class="loading-wrap">
+        <text class="loading-text">加载中...</text>
+      </view>
+
+      <!-- 商品列表 -->
+      <view v-else-if="products.length > 0" class="product-list">
+        <view class="product-card-wrapper" v-for="item in products" :key="item.goods_id">
+          <ProductCard
+            :item="item"
+            @click="handleProductClick"
+          />
+        </view>
+      </view>
+
+      <!-- 空状态兜底 -->
+      <Empty
+        v-else
+        type="error"
+        text="推荐商品加载失败，请稍后重试"
+        action-text="重新加载"
+        @action="loadRecommendProducts"
+      />
+    </view>
+
+    <!-- 剪贴板转链提示弹窗 -->
+    <view v-if="clipboardTipVisible" class="clipboard-tip-mask" @click="dismissClipboardTip">
+      <view class="clipboard-tip" @click.stop>
+        <view class="tip-header">
+          <text class="tip-icon"><IconLine name="link" style="--size:34rpx;vertical-align:middle" /></text>
+          <text class="tip-title">检测到商品链接</text>
+        </view>
+        <text class="tip-content">{{ clipboardUrl }}</text>
+        <view class="tip-actions">
+          <view class="tip-btn cancel" @click="dismissClipboardTip">
+            <text>取消</text>
+          </view>
+          <view class="tip-btn confirm" @click="goConvertLink">
+            <text>立即转链</text>
+          </view>
+        </view>
       </view>
     </view>
 
@@ -57,184 +84,284 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { onShow, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import ProductCard from '@/components/ProductCard.vue'
 import BackTop from '@/components/BackTop.vue'
+import Empty from '@/components/Empty.vue'
+import IconLine from '@/components/IconLine.vue'
+import { searchGoods } from '@/api/goods'
+import { checkClipboardLink } from '@/utils/clipboard'
+import { setupHomeShare } from '@/utils/share'
+import { setPendingProduct } from '@/utils/product-store'
+import tracker from '@/utils/tracker'
+import type { GoodsItem } from '@/api/types'
+
+setupHomeShare(onShareAppMessage, onShareTimeline)
+
+const statusBarHeight = ref(20)
+
+uni.getSystemInfo({
+  success: (res) => {
+    statusBarHeight.value = res.statusBarHeight || 20
+  }
+})
 
 const searchKeyword = ref('')
+const products = ref<GoodsItem[]>([])
+const loading = ref(false)
+const clipboardTipVisible = ref(false)
+const clipboardUrl = ref('')
 
-const banners = ref([
-  { image: 'https://cdn.example.com/banner1.jpg' },
-  { image: 'https://cdn.example.com/banner2.jpg' },
-  { image: 'https://cdn.example.com/banner3.jpg' }
-])
+const handleSearchInput = (e: any) => {
+  searchKeyword.value = e.detail.value
+}
 
-const categories = ref([
-  { icon: '🏠', name: '首页' },
-  { icon: '📦', name: '商品' },
-  { icon: '🎁', name: '优惠券' },
-  { icon: '💰', name: '返利' },
-  { icon: '👤', name: '我的' }
-])
-
-const products = ref([
-  {
-    id: 1,
-    title: '超值商品标题示例，展示商品的核心卖点信息',
-    desc: '商品描述信息，简短介绍产品特点',
-    image_url: 'https://cdn.example.com/product1.jpg',
-    price: '99.00',
-    original_price: '199.00',
-    discount: 5,
-    commission: '10.00',
-    sales: 1234
-  },
-  {
-    id: 2,
-    title: '精选优质商品，品质保证值得信赖',
-    desc: '精选商品描述，品质优良',
-    image_url: 'https://cdn.example.com/product2.jpg',
-    price: '159.00',
-    original_price: '299.00',
-    commission: '15.00',
-    sales: 567
-  },
-  {
-    id: 3,
-    title: '限时特惠商品，错过不再有',
-    desc: '限时特惠，数量有限',
-    image_url: 'https://cdn.example.com/product3.jpg',
-    price: '49.00',
-    original_price: '99.00',
-    discount: 5,
-    commission: '5.00',
-    sales: 2345
-  }
-])
-
-const handleSearch = () => {
-  if (searchKeyword.value.trim()) {
-    uni.showToast({
-      title: `搜索: ${searchKeyword.value}`,
-      icon: 'none'
-    })
+const loadRecommendProducts = async () => {
+  loading.value = true
+  try {
+    const res = await searchGoods('热销', 1, 20, 'myq')
+    products.value = res.data?.items || []
+  } catch (error) {
+    console.warn('[首页] 推荐商品加载失败:', error)
+    products.value = []
+  } finally {
+    loading.value = false
   }
 }
 
-const handleProductClick = (item: any) => {
+const handleSearch = () => {
+  const keyword = searchKeyword.value.trim()
+  if (!keyword) {
+    uni.showToast({ title: '请输入搜索内容', icon: 'none' })
+    return
+  }
   uni.navigateTo({
-    url: `/pages/product/detail?id=${item.id}`
+    url: `/pages/search/list?keyword=${encodeURIComponent(keyword)}`
   })
 }
 
+const handleSearchMore = () => {
+  uni.navigateTo({
+    url: `/pages/search/list?keyword=${encodeURIComponent('热销')}`
+  })
+}
+
+const handleProductClick = (item: GoodsItem) => {
+  tracker.trackGoodsClick(item.goods_id, item.goods_title)
+  setPendingProduct(item)
+  uni.navigateTo({
+    url: `/pages/product/detail?goods_id=${encodeURIComponent(item.goods_id)}`
+  })
+}
+
+const checkClipboard = async () => {
+  const url = await checkClipboardLink()
+  if (url) {
+    clipboardUrl.value = url
+    clipboardTipVisible.value = true
+  }
+}
+
+const goConvertLink = () => {
+  clipboardTipVisible.value = false
+  uni.navigateTo({
+    url: `/pages/product/detail?url=${encodeURIComponent(clipboardUrl.value)}`
+  })
+  uni.setClipboardData({ data: '' })
+}
+
+const dismissClipboardTip = () => {
+  clipboardTipVisible.value = false
+}
+
 onMounted(() => {
-  console.log('Index page mounted')
+  loadRecommendProducts()
+  tracker.trackPageView('首页')
+})
+
+onShow(() => {
+  checkClipboard()
 })
 </script>
 
 <style lang="scss" scoped>
 .page-container {
   min-height: 100vh;
-  background: #f5f5f5;
+  background: #ffffff;
+  padding-bottom: 40rpx;
 }
 
-.header {
-  padding: 20rpx;
-  background: #fff;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-
-  .search-bar {
-    display: flex;
-    align-items: center;
-    background: #f5f5f5;
-    border-radius: 40rpx;
-    padding: 16rpx 24rpx;
-
-    .search-icon {
-      font-size: 28rpx;
-      margin-right: 12rpx;
-    }
-
-    .search-input {
-      flex: 1;
-      font-size: 28rpx;
-      background: transparent;
-    }
-  }
+.custom-nav {
+  background: #ffffff;
+  padding: 0 32rpx 24rpx;
 }
 
-.banner {
-  padding: 0 20rpx 20rpx;
-
-  .banner-swiper {
-    height: 300rpx;
-    border-radius: 16rpx;
-    overflow: hidden;
-  }
-
-  .banner-image {
-    width: 100%;
-    height: 100%;
-  }
+.nav-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+  text-align: center;
+  margin-bottom: 24rpx;
+  letter-spacing: 2rpx;
 }
 
-.category {
+.nav-search {
   display: flex;
-  justify-content: space-around;
-  padding: 20rpx;
-  background: #fff;
-  margin-bottom: 20rpx;
+  align-items: center;
+  background: #f5f5f5;
+  border-radius: 40rpx;
+  padding: 16rpx 16rpx 16rpx 28rpx;
+}
 
-  .category-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12rpx;
+.search-icon {
+  font-size: 28rpx;
+  margin-right: 16rpx;
+  color: #999;
+}
 
-    .category-icon {
-      width: 80rpx;
-      height: 80rpx;
-      background: #f5f5f5;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 36rpx;
-    }
+.search-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333;
+  background: transparent;
+}
 
-    .category-name {
-      font-size: 24rpx;
-      color: #666;
-    }
+.search-btn {
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 26rpx;
+  padding: 12rpx 28rpx;
+  border-radius: 32rpx;
+  margin-left: 16rpx;
+
+  text {
+    color: #fff;
+  }
+
+  &:active {
+    opacity: 0.8;
   }
 }
 
 .section {
-  padding: 0 20rpx;
+  padding: 32rpx 24rpx 0;
+}
 
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20rpx;
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 28rpx;
+}
 
-    .section-title {
-      font-size: 32rpx;
-      font-weight: 600;
-      color: #333;
-    }
+.section-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+}
 
-    .section-more {
-      font-size: 26rpx;
-      color: #999;
+.section-more {
+  font-size: 26rpx;
+  color: #999;
+}
+
+.product-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+
+  .product-card-wrapper {
+    width: 48.5%;
+    margin-bottom: 24rpx;
+  }
+}
+
+.loading-wrap {
+  padding: 120rpx 0;
+  text-align: center;
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #999;
+}
+
+.clipboard-tip-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clipboard-tip {
+  width: 600rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 40rpx;
+}
+
+.tip-header {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.tip-icon {
+  font-size: 36rpx;
+}
+
+.tip-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.tip-content {
+  display: block;
+  font-size: 26rpx;
+  color: #666;
+  line-height: 1.5;
+  margin-bottom: 32rpx;
+  word-break: break-all;
+  max-height: 120rpx;
+  overflow: hidden;
+}
+
+.tip-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+.tip-btn {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+  border-radius: 40rpx;
+
+  text {
+    font-size: 28rpx;
+  }
+
+  &.cancel {
+    background: #f5f5f5;
+    text {
+      color: #666;
     }
   }
 
-  .product-list {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
+  &.confirm {
+    background: var(--ink, #1a1a1a);
+    text {
+      color: var(--yellow, #ffd400);
+      font-weight: 600;
+    }
   }
 }
 </style>

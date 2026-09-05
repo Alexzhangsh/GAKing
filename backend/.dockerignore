@@ -1,0 +1,43 @@
+# @ai-generated
+# Docker 构建忽略文件，避免将无用/敏感文件打入镜像
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.DS_Store
+
+# 环境变量文件（敏感，禁止打入镜像；运行时通过 env_file 注入）
+.env
+.env.*
+!.env.example
+
+# SSL 证书与私钥
+ssl/
+*.pem
+*.key
+
+# 日志与运行时数据
+logs/
+*.log
+dump.rdb
+redis/
+
+# 测试与开发产物
+tests/
+test_*.py
+*.tar
+*.zip
+
+# IDE
+.trae/
+.idea/
+.vscode/
+
+# 临时文件
+tmp/
+static/uploads/*

@@ -8,10 +8,14 @@ from src.models.system import (
     CloudConfig,
     PayConfig,
     ChannelMapping,
+    ChannelCommissionConfig,
 )
 from src.models.business import (
     Order,
     CommissionFlow,
+    MiniappUser,
+    TrackEvent,
+    UserMessage,
 )
 
 __all__ = [
@@ -19,6 +23,14 @@ __all__ = [
     "CloudConfig",
     "PayConfig",
     "ChannelMapping",
+    "ChannelCommissionConfig",
+    "ChannelBlacklist",
+    "ChannelDailyStat",
+    "ChannelConfigLog",
     "Order",
     "CommissionFlow",
+    "MiniappUser",
+    "TrackEvent",
+    "UserMessage",
+    "OrderOperationLog",
 ]

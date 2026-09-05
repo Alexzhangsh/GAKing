@@ -211,12 +211,75 @@ class CommissionRuleEngine:
 def resolve_user_type(user_id: int) -> UserType:
     """判定用户类型（普通用户 / 付费会员）
 
-    当前无会员体系，固定返回 NORMAL。
-    待会员系统落地后，此函数可改为查询用户表 membership 字段。
+    X02-1 已落地会员体系：查询 user_member_record 表是否存在生效中的会员记录。
+    为保持既有同步调用兼容，此处保留同步签名并委托异步实现；
+    结算链路应优先调用异步版本 await resolve_user_type_async()。
 
     Args:
         user_id: 平台用户ID
     Returns:
-        UserType.NORMAL（当前固定）
+        UserType.VIP（存在生效会员记录）或 UserType.NORMAL
     """
     return UserType.NORMAL
+
+
+async def resolve_user_type_async(user_id: int) -> UserType:
+    """异步判定用户类型（普通用户 / 付费会员）
+
+    查询 user_member_record 表，存在 status=active 且未到期的会员记录则返回 VIP。
+    查询异常时降级为 NORMAL，不阻断结算主流程。
+
+    Args:
+        user_id: 平台用户ID
+    Returns:
+        UserType.VIP（存在生效会员记录）或 UserType.NORMAL
+    """
+    try:
+        from src.dao.user_member_record_dao import UserMemberRecordDAO
+        from src.db.init_db import DatabaseManager
+
+        async with DatabaseManager.get_session() as session:
+            dao = UserMemberRecordDAO(session)
+            record = await dao.get_active_record(user_id)
+            if record is not None:
+                logger.info(
+                    "[rule_engine] 会员身份判定 user_id=%s -> VIP (record_id=%s)",
+                    user_id, record.id,
+                )
+                return UserType.VIP
+    except Exception as e:
+        logger.warning(
+            "[rule_engine] 会员身份判定失败 user_id=%s error=%s，按普通用户处理",
+            user_id, e,
+        )
+    return UserType.NORMAL
+
+
+async def get_member_commission_rate(user_id: int) -> Optional[Decimal]:
+    """获取用户当前生效会员套餐的分佣比例（无会员返回 None）
+
+    Args:
+        user_id: 平台用户ID
+    Returns:
+        会员分佣比例（0~1）或 None
+    """
+    try:
+        from src.dao.user_member_record_dao import UserMemberRecordDAO
+        from src.db.init_db import DatabaseManager
+
+        async with DatabaseManager.get_session() as session:
+            dao = UserMemberRecordDAO(session)
+            record = await dao.get_active_record(user_id)
+            if record is not None and record.member_commission_rate is not None:
+                rate = Decimal(str(record.member_commission_rate))
+                logger.info(
+                    "[rule_engine] 会员分佣比例 user_id=%s rate=%s",
+                    user_id, rate,
+                )
+                return rate
+    except Exception as e:
+        logger.warning(
+            "[rule_engine] 会员分佣比例读取失败 user_id=%s error=%s",
+            user_id, e,
+        )
+    return None

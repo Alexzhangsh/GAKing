@@ -25,6 +25,10 @@ _CPS_FIELDS = [
     "ORDERX_TOKEN",
 ]
 
+# S04: 一期/二期仅对接喵有券，大淘客和订单侠暂缓（留空即禁用渠道，不影响启动）
+_CPS_REQUIRED = ["MIAO_QUAN_TOKEN"]
+_CPS_OPTIONAL = ["DATAOK_APPID", "DATAOK_APPKEY", "ORDERX_TOKEN"]
+
 _SENSITIVE_KEY_PATTERNS = [
     re.compile(r"(?i)(password|secret|token|key|api_key|app_key)"),
 ]
@@ -72,9 +76,15 @@ class EnvConfig:
     OBS_BUCKET_NAME: str = ""
 
     MIAO_QUAN_TOKEN: str = ""
+    MIAO_QUAN_TBNAME: str = ""
+    MIAO_QUAN_PID: str = ""
     DATAOK_APPID: str = ""
     DATAOK_APPKEY: str = ""
     ORDERX_TOKEN: str = ""
+
+    # 微信小程序配置（C端OAuth登录）
+    WX_MINI_APPID: str = ""
+    WX_MINI_SECRET: str = ""
 
     RISK_HOLD_RATIO: float = 0.20
     SETTLE_COOL_DAY: int = 30
@@ -146,9 +156,15 @@ class EnvConfig:
         cls.OBS_BUCKET_NAME = cls._get_str("OBS_BUCKET_NAME", "")
 
         cls.MIAO_QUAN_TOKEN = cls._get_str("MIAO_QUAN_TOKEN", "")
+        cls.MIAO_QUAN_TBNAME = cls._get_str("MIAO_QUAN_TBNAME", "")
+        cls.MIAO_QUAN_PID = cls._get_str("MIAO_QUAN_PID", "")
         cls.DATAOK_APPID = cls._get_str("DATAOK_APPID", "")
         cls.DATAOK_APPKEY = cls._get_str("DATAOK_APPKEY", "")
         cls.ORDERX_TOKEN = cls._get_str("ORDERX_TOKEN", "")
+
+        # 微信小程序配置（C端OAuth登录）
+        cls.WX_MINI_APPID = cls._get_str("WX_MINI_APPID", "")
+        cls.WX_MINI_SECRET = cls._get_str("WX_MINI_SECRET", "")
 
         cls.RISK_HOLD_RATIO = cls._get_decimal("RISK_HOLD_RATIO", Decimal("0.20"))
         cls.SETTLE_COOL_DAY = cls._get_int("SETTLE_COOL_DAY", 30)
@@ -246,6 +262,16 @@ class EnvConfig:
             return default
 
     @classmethod
+    def _get_float(cls, key: str, default: float = 0.0) -> float:
+        val = os.getenv(key, "")
+        if not val:
+            return default
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
+
+    @classmethod
     def _get_bool(cls, key: str, default: bool = True) -> bool:
         val = os.getenv(key, "")
         if not val:
@@ -303,9 +329,16 @@ class EnvConfig:
             raise ValueError("Production CORS_ORIGINS cannot be '*'")
         if len(cls.JWT_SECRET) < 64:
             raise ValueError("Production JWT_SECRET must be at least 64 characters")
-        cps_missing = [f for f in _CPS_FIELDS if not getattr(cls, f, "")]
+        # S04: 仅喵有券为必填渠道，大淘客/订单侠可选（留空=禁用渠道）
+        cps_missing = [f for f in _CPS_REQUIRED if not getattr(cls, f, "")]
         if cps_missing:
-            raise ValueError(f"Production missing CPS tokens: {', '.join(cps_missing)}")
+            raise ValueError(f"Production missing required CPS tokens: {', '.join(cps_missing)}")
+        cps_optional_missing = [f for f in _CPS_OPTIONAL if not getattr(cls, f, "")]
+        if cps_optional_missing:
+            import logging
+            logging.getLogger("env_config").warning(
+                "Optional CPS channels disabled (empty tokens): %s", ", ".join(cps_optional_missing)
+            )
 
     @classmethod
     def is_production(cls) -> bool:

@@ -1,0 +1,250 @@
+# @ai-generated
+"""
+B14-1 数据大盘报表导出 Service
+业务逻辑层：生成 Excel 报表文件，记录导出任务日志
+"""
+import io
+import json
+import logging
+import os
+import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+
+from src.common.b14_audit_util import AuditLogger
+from src.config.b13_b14_constants import B13B14AuditAction
+from src.config.b14_1_constants import (
+    EXPORT_FILENAME_PREFIX,
+    EXPORT_MAX_DATE_RANGE_DAYS,
+    EXPORT_MAX_ROWS,
+    PERM_DASHBOARD_EXPORT,
+)
+from src.db.base import DatabaseManager
+from src.dao.dashboard_query_dao import DashboardQueryDAO
+
+logger = logging.getLogger("services.b14_dashboard_export")
+
+# 导出文件目录（相对于项目根目录）
+EXPORT_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "exports",
+    "dashboard",
+)
+
+
+class B14DashboardExportService:
+    """数据大盘报表导出 Service"""
+
+    @classmethod
+    async def export_commission_stats(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        group_by: str = "date",
+        admin_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        """导出佣金统计报表
+
+        Args:
+            group_by: date / channel / user
+        Returns:
+            {"file_path": str, "file_name": str, "row_count": int, "file_size": int}
+        """
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+            if group_by == "date":
+                items = await dao.get_commission_stats_by_date(start_date, end_date)
+            elif group_by == "channel":
+                items = await dao.get_commission_stats_by_channel(start_date, end_date)
+            elif group_by == "user":
+                paged = await dao.get_commission_stats_by_user(
+                    start_date, end_date, page=1, page_size=EXPORT_MAX_ROWS
+                )
+                items = paged["items"]
+            else:
+                raise ValueError(f"不支持的 group_by: {group_by}")
+
+        # 构建Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "佣金统计"
+
+        # 表头
+        headers = ["日期", "佣金总额", "订单数"]
+        if group_by == "channel":
+            headers = ["渠道编码", "佣金总额", "订单数"]
+        elif group_by == "user":
+            headers = ["用户ID", "佣金总额", "订单数"]
+
+        cls._write_header(ws, headers)
+
+        # 数据行
+        for item in items:
+            if group_by == "date":
+                ws.append([item["date"], item["total_commission"], item["order_count"]])
+            elif group_by == "channel":
+                ws.append([item["channel_code"], item["total_commission"], item["order_count"]])
+            elif group_by == "user":
+                ws.append([item["user_id"], item["total_commission"], item["order_count"]])
+
+        return await cls._save_workbook(
+            wb, f"commission_stats_{group_by}", admin_user_id
+        )
+
+    @classmethod
+    async def export_order_trend(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        group_by: str = "day",
+        admin_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        """导出订单趋势报表"""
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+            items = await dao.get_order_trend(start_date, end_date, group_by=group_by)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "订单趋势"
+
+        cls._write_header(ws, ["日期", "订单数", "佣金总额"])
+
+        for item in items:
+            ws.append([item["date"], item["order_count"], item["total_commission"]])
+
+        return await cls._save_workbook(
+            wb, f"order_trend_{group_by}", admin_user_id
+        )
+
+    @classmethod
+    async def export_withdraw_trend(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        group_by: str = "day",
+        admin_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        """导出提现趋势报表"""
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+            items = await dao.get_withdraw_trend(start_date, end_date, group_by=group_by)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "提现趋势"
+
+        cls._write_header(ws, ["日期", "申请提现数", "申请金额", "成功到账金额"])
+
+        for item in items:
+            ws.append([
+                item["date"],
+                item["apply_count"],
+                item["withdraw_amount"],
+                item["success_amount"],
+            ])
+
+        return await cls._save_workbook(
+            wb, f"withdraw_trend_{group_by}", admin_user_id
+        )
+
+    @classmethod
+    async def export_cards_report(
+        cls,
+        admin_user_id: int = 0,
+    ) -> Dict[str, Any]:
+        """导出大盘卡片数据快照"""
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+            data = await dao.get_cards_data()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "大盘概览"
+
+        cls._write_header(ws, ["指标", "数值"])
+
+        rows = [
+            ("累计订单数", data["total_orders"]),
+            ("待结算佣金", data["pending_settle_commission"]),
+            ("已结算佣金", data["settled_commission"]),
+            ("提现总额", data["total_withdrawn"]),
+            ("待审核提现数", data["pending_review_withdraws"]),
+        ]
+        for name, value in rows:
+            ws.append([name, value])
+
+        return await cls._save_workbook(wb, "cards_snapshot", admin_user_id)
+
+    # ── 私有工具方法 ──────────────────────────────────────
+
+    @staticmethod
+    def _write_header(ws, headers: List[str]) -> None:
+        """写入表头样式"""
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font_white = Font(bold=True, size=11, color="FFFFFF")
+        thin_border = Border(
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin"),
+        )
+
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font_white
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = thin_border
+
+    @classmethod
+    async def _save_workbook(
+        cls, wb: Workbook, prefix: str, admin_user_id: int
+    ) -> Dict[str, Any]:
+        """保存工作簿到文件系统"""
+        # 确保导出目录存在
+        os.makedirs(EXPORT_DIR, exist_ok=True)
+
+        # 生成文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_name = f"{EXPORT_FILENAME_PREFIX}_{prefix}_{timestamp}.xlsx"
+        file_path = os.path.join(EXPORT_DIR, file_name)
+
+        # 保存
+        wb.save(file_path)
+
+        # 获取文件信息
+        file_size = os.path.getsize(file_path)
+        row_count = wb.active.max_row - 1  # 减去表头
+
+        # 记录审计日志
+        try:
+            await AuditLogger.log(
+                action=B13B14AuditAction.DASHBOARD_QUERY.value,
+                target_type="dashboard_export",
+                target_id=0,
+                details={
+                    "export_type": prefix,
+                    "file_name": file_name,
+                    "row_count": row_count,
+                    "file_size": file_size,
+                },
+                user_id=admin_user_id,
+            )
+        except Exception as e:
+            logger.warning("[_save_workbook] 审计日志写入失败: %s", e)
+
+        logger.info(
+            "报表导出成功: file=%s, rows=%d, size=%d",
+            file_name, row_count, file_size,
+        )
+
+        return {
+            "file_name": file_name,
+            "file_path": file_path,
+            "row_count": row_count,
+            "file_size": file_size,
+        }

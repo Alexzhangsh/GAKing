@@ -133,3 +133,38 @@ CREATE TABLE IF NOT EXISTS `gaking_task_status` (
   KEY `idx_status` (`status`),
   KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='定时任务执行状态表';
+CREATE TABLE IF NOT EXISTS `miniapp_user` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint(20) NOT NULL COMMENT '平台用户ID（全局唯一）',
+  `openid` varchar(64) NOT NULL COMMENT '微信小程序openid',
+  `unionid` varchar(64) NOT NULL DEFAULT '' COMMENT '微信unionid（可为空）',
+  `nickname` varchar(64) NOT NULL DEFAULT '微信用户' COMMENT '用户昵称',
+  `avatar` varchar(512) NOT NULL DEFAULT '' COMMENT '头像URL',
+  `session_key` varchar(128) NOT NULL DEFAULT '' COMMENT '微信会话密钥',
+  `status` int(11) NOT NULL DEFAULT 0 COMMENT '账号状态：0-正常 1-禁用',
+  `is_delete` tinyint(1) NOT NULL DEFAULT 0 COMMENT '软删除：0-未删除 1-已删除',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_openid` (`openid`),
+  UNIQUE KEY `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序C端用户表';
+CREATE TABLE IF NOT EXISTS `track_event` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint(20) NOT NULL DEFAULT 0 COMMENT '用户ID（0=匿名）',
+  `event_type` varchar(32) NOT NULL COMMENT '事件类型：page_view/goods_click/share/order_create/withdraw_apply/js_error/api_error/promise_reject',
+  `event_name` varchar(128) NOT NULL DEFAULT '' COMMENT '事件名称',
+  `page_path` varchar(256) NOT NULL DEFAULT '' COMMENT '页面路径',
+  `params` text COMMENT '事件参数(JSON)',
+  `device_info` text COMMENT '设备信息(JSON)',
+  `session_id` varchar(64) NOT NULL DEFAULT '' COMMENT '会话ID',
+  `client_timestamp` bigint(20) NOT NULL DEFAULT 0 COMMENT '客户端事件时间戳(ms)',
+  `is_delete` tinyint(1) NOT NULL DEFAULT 0 COMMENT '软删除：0-未删除 1-已删除',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_event_type` (`event_type`),
+  KEY `idx_track_user_id` (`user_id`),
+  KEY `idx_track_create_time` (`create_time`),
+  KEY `idx_session_id` (`session_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='前端行为埋点&错误日志表';

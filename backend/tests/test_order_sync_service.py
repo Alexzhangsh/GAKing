@@ -827,7 +827,7 @@ class TestGetSyncStatus:
 
     @pytest.mark.asyncio
     async def test_status_query(self):
-        """查询三渠道状态"""
+        """查询三渠道状态（S04：生产仅启用喵有券渠道）"""
         dao = _make_sync_dao_mock()
         svc = OrderSyncService(dao)
         with patch(
@@ -847,8 +847,13 @@ class TestGetSyncStatus:
                     return_value=2,
                 ):
                     result = await svc.get_sync_status()
-        assert result["total_enabled"] == 3
+        # S04 生产渠道开关：仅喵有券启用（orderx/dta 停用）
+        assert result["total_enabled"] == 1
         assert len(result["channels"]) == 3
+        enabled_by_code = {ch["channel_code"]: ch["enabled"] for ch in result["channels"]}
+        assert enabled_by_code["myq"] is True
+        assert enabled_by_code["orderx"] is False
+        assert enabled_by_code["dta"] is False
         for ch in result["channels"]:
             assert ch["cursor"] == "2026-08-01T10:00:00"
             assert ch["failed_queue_length"] == 2

@@ -18,6 +18,7 @@ from src.api.v1.response_util import (
 )
 from src.dao.order_dao import OrderDAO
 from src.dao.commission_flow_dao import CommissionFlowDAO
+from src.dao.user_commission_account_dao import UserCommissionAccountDAO
 from src.db.init_db import DatabaseManager
 from src.schemas.cps import (
     OrderCreateRequest,
@@ -40,8 +41,8 @@ async def get_db():
 
 
 def get_order_service(db: AsyncSession = Depends(get_db)) -> OrderService:
-    """构造 OrderService 实例（注入 OrderDAO + CommissionFlowDAO）"""
-    return OrderService(OrderDAO(db), CommissionFlowDAO(db))
+    """构造 OrderService 实例（注入 OrderDAO + CommissionFlowDAO + UserCommissionAccountDAO）"""
+    return OrderService(OrderDAO(db), CommissionFlowDAO(db), UserCommissionAccountDAO(db))
 
 
 # ══════════════════════════════════════════════════════

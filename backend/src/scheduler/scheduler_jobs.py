@@ -31,7 +31,15 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List
 
+from sqlalchemy import and_, func, select
+
 from src.common.lock_util import LockUtil
+from src.config.b05_4_constants import (
+    TASK_ABNORMAL_WATCHDOG_ENABLE,
+    TASK_ABNORMAL_WATCHDOG_LOCK_TIMEOUT,
+    TASK_ABNORMAL_WATCHDOG_WARN_THRESHOLD,
+    TASK_CRON_ABNORMAL_WATCHDOG,
+)
 from src.config.constants import (
     TASK_CLOSE_EXPIRED_ORDERS_ENABLE,
     TASK_CLOSE_EXPIRED_ORDERS_LOCK_TIMEOUT,
@@ -42,9 +50,11 @@ from src.config.constants import (
     TASK_ORDER_EXPIRE_MINUTES,
     TransferStatus,
 )
+from src.dao.abnormal_order_dao import AbnormalOrderDAO
 from src.dao.commission_flow_dao import CommissionFlowDAO
 from src.dao.order_dao import OrderDAO
 from src.db.init_db import DatabaseManager
+from src.models.business.abnormal_order_model import AbnormalOrder
 from src.scheduler.scheduler import TaskScheduler
 
 logger = logging.getLogger("scheduler.jobs")
@@ -234,6 +244,97 @@ async def daily_commission_reconciliation() -> Dict[str, Any]:
         }
 
 
+# ── 任务3：异常订单定时巡检 ───────────────────────────────────────────
+
+
+async def abnormal_order_watchdog() -> Dict[str, Any]:
+    """异常订单定时巡检
+
+    统计当日新增的异常订单，按异常原因分组输出日志告警。
+    当日新增超过阈值（TASK_ABNORMAL_WATCHDOG_WARN_THRESHOLD）时输出 WARNING 级别日志。
+
+    Returns:
+        {"status": "success"|"skipped"|"failed", "message": str,
+         "today_new_count": int, "pending_count": int,
+         "reasons": Dict[str, int]}
+    """
+    task_name = "abnormal_order_watchdog"
+
+    if not TASK_ABNORMAL_WATCHDOG_ENABLE:
+        logger.info("[%s] 任务开关关闭，跳过执行", task_name)
+        return {"status": "skipped", "message": "任务开关关闭"}
+
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    logger.info("[%s] 任务开始执行 today_start=%s", task_name, today_start)
+
+    try:
+        async with DatabaseManager.get_session() as db:
+            dao = AbnormalOrderDAO(db)
+
+            # 统计当日新增异常订单总数
+            today_new = await dao.count_by_create_time(today_start)
+            # 统计待审核数量
+            pending_count = await dao.count_by_review_status_simple("PENDING")
+
+            # 按异常原因分组统计
+            stmt = (
+                select(AbnormalOrder.abnormal_reason, func.count())
+                .where(
+                    and_(
+                        AbnormalOrder.is_delete == False,  # noqa: E712
+                        AbnormalOrder.create_time >= today_start,
+                    )
+                )
+                .group_by(AbnormalOrder.abnormal_reason)
+            )
+            result = await db.execute(stmt)
+            reasons: Dict[str, int] = {}
+            for row in result.all():
+                reason = str(row[0]) if row[0] else "unknown"
+                reasons[reason] = int(row[1])
+
+        # 输出日志告警
+        if today_new > 0:
+            log_level = (
+                logging.WARNING
+                if today_new >= TASK_ABNORMAL_WATCHDOG_WARN_THRESHOLD
+                else logging.INFO
+            )
+            logger.log(
+                log_level,
+                "[%s] 巡检结果: 当日新增异常订单=%s 待审核=%s 阈值=%s "
+                "原因分布=%s",
+                task_name,
+                today_new,
+                pending_count,
+                TASK_ABNORMAL_WATCHDOG_WARN_THRESHOLD,
+                reasons,
+            )
+        else:
+            logger.info("[%s] 巡检结果: 当日无新增异常订单", task_name)
+
+        return {
+            "status": "success",
+            "message": f"当日新增异常订单 {today_new} 笔，待审核 {pending_count} 笔",
+            "today_new_count": today_new,
+            "pending_count": pending_count,
+            "reasons": reasons,
+        }
+    except Exception as e:
+        logger.error(
+            "[%s] 巡检任务执行失败: %s\n%s",
+            task_name, e, traceback.format_exc(),
+        )
+        return {
+            "status": "failed",
+            "message": str(e),
+            "today_new_count": 0,
+            "pending_count": 0,
+            "reasons": {},
+        }
+
+
 # ── 分布式锁包装 + 注册 ───────────────────────────────────────────────
 
 
@@ -241,19 +342,31 @@ async def _run_with_lock(
     task_name: str,
     func,
     lock_timeout: int,
+    lock_wait_seconds: int = 5,
 ) -> Dict[str, Any]:
     """任务执行包装：分布式锁 + 调用 + 异常兜底
 
-    - 锁获取失败（集群已有实例在跑）：记日志并跳过，不报错；
+    S04 P2-1 优化：
+    - 锁获取失败时先短等待重试（默认 5s），吸收部署重启/多实例同时启动时的
+      瞬时锁冲突，显著降低任务跳过概率；
+    - 等待后仍失败（集群实例正在长任务执行）才跳过，并记录锁冲突计数；
     - func 内部已自带 try/except，单条失败不阻断；此处兜底未捕获异常。
     """
     lock_owner = None
     try:
-        lock_owner = await LockUtil.acquire_lock(
-            f"scheduler:{task_name}", timeout=lock_timeout
+        lock_owner = await LockUtil.acquire_with_wait(
+            f"scheduler:{task_name}",
+            timeout=lock_timeout,
+            wait_timeout=lock_wait_seconds,
+            poll_interval=0.5,
         )
         if lock_owner is None:
-            logger.warning("[%s] 未获取到分布式锁，跳过本次执行", task_name)
+            await LockUtil.record_lock_conflict(task_name)
+            logger.warning(
+                "[%s] 等待 %ss 后仍未获取到分布式锁，跳过本次执行",
+                task_name,
+                lock_wait_seconds,
+            )
             return {"status": "skipped", "message": "未获取到分布式锁，跳过"}
         return await func()
     except Exception as e:
@@ -294,10 +407,23 @@ def register_scheduler_jobs() -> None:
         ),
     )
 
+    # 任务3：异常订单定时巡检 —— 每 2 小时
+    TaskScheduler.add_cron_task(
+        func=_run_with_lock,
+        name="abnormal_order_watchdog",
+        cron_expr=TASK_CRON_ABNORMAL_WATCHDOG,
+        args=(
+            "abnormal_order_watchdog",
+            abnormal_order_watchdog,
+            TASK_ABNORMAL_WATCHDOG_LOCK_TIMEOUT,
+        ),
+    )
+
     logger.info(
-        "Scheduler jobs registered: close_expired_unpaid_orders(%s), daily_commission_reconciliation(%s)",
+        "Scheduler jobs registered: close_expired_unpaid_orders(%s), daily_commission_reconciliation(%s), abnormal_order_watchdog(%s)",
         TASK_CRON_CLOSE_EXPIRED_ORDERS,
         TASK_CRON_DAILY_COMMISSION_RECONCILIATION,
+        TASK_CRON_ABNORMAL_WATCHDOG,
     )
 
     # B05 订单同步任务（三渠道错峰）：注册逻辑见 order_sync_jobs.py
@@ -313,3 +439,89 @@ def register_scheduler_jobs() -> None:
     )
 
     register_commission_settlement_jobs()
+
+    # B12 佣金结算状态机任务（SETTLABLE 冻结 + SETTLED 解冻）：注册逻辑见 settlement_b12_jobs.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.settlement_b12_jobs import register_settlement_b12_jobs
+
+    register_settlement_b12_jobs()
+
+    # B13 全链路数据对账任务（每日凌晨 02:00 四方核对）：注册逻辑见 reconciliation_b13_jobs.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.reconciliation_b13_jobs import (
+        register_reconciliation_b13_jobs,
+    )
+
+    register_reconciliation_b13_jobs()
+
+    # B10 消息推送巡检定时任务（每5分钟）：注册逻辑见 b10_message_push_jobs.py
+    from src.scheduler.b10_message_push_jobs import (
+        register_b10_message_push_jobs,
+    )
+
+    register_b10_message_push_jobs()
+
+    # B16 商品预热定时任务（渠道预热 + 存量刷新 + 冷品清理）：注册逻辑见 goods_warming_jobs.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.goods_warming_jobs import (
+        register_goods_warming_jobs,
+    )
+
+    register_goods_warming_jobs()
+
+    # B05-7 批量订单结算定时任务（运行日志 + 异常标记）：注册逻辑见 batch_settlement_task.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.batch_settlement_task import (
+        register_batch_settlement_task,
+        register_cleanup_task,
+    )
+
+    register_batch_settlement_task()
+    register_cleanup_task()
+
+    # B07-1 逆向佣金冲减定时任务（每30分钟）：注册逻辑见 b07_1_reverse_commission_jobs.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.b07_1_reverse_commission_jobs import (
+        register_reverse_commission_jobs,
+    )
+
+    register_reverse_commission_jobs()
+
+    # B11-1 渠道每日统计定时任务（每日 01:00）：注册逻辑见 b11_channel_stat_jobs.py
+    from src.scheduler.b11_channel_stat_jobs import (
+        register_b11_channel_stat_jobs,
+    )
+
+    register_b11_channel_stat_jobs()
+
+    # B12-1 订单异常巡检定时任务（每30分钟）：注册逻辑见 b12_order_anomaly_jobs.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.b12_order_anomaly_jobs import (
+        register_b12_order_anomaly_jobs,
+    )
+
+    register_b12_order_anomaly_jobs()
+
+    # B14-1 数据大盘预计算定时任务（每30分钟）：注册逻辑见 b14_1_dashboard_jobs.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.b14_1_dashboard_jobs import (
+        register_b14_1_dashboard_jobs,
+    )
+
+    register_b14_1_dashboard_jobs()
+
+    # B17 多渠道对账定时任务（每日 02:30）：注册逻辑见 b17_channel_reconciliation_jobs.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.b17_channel_reconciliation_jobs import (
+        register_b17_channel_reconciliation_jobs,
+    )
+
+    register_b17_channel_reconciliation_jobs()
+
+    # X02-1 会员状态定时刷新任务（每30分钟）：注册逻辑见 member_status_jobs.py
+    # 追加注册，不改动上方现有任务的注册逻辑
+    from src.scheduler.member_status_jobs import register_member_status_jobs
+
+    register_member_status_jobs()
+
+    logger.info("All scheduler jobs registered successfully")

@@ -1,0 +1,179 @@
+# @ai-generated
+# ============================================================
+# 金角大王CPS - 生产环境 Docker 编排（S04 最终优化版）
+# 服务：redis（内部网络） + backend（后端 API） + admin（管理后台前端）
+# MySQL 使用现有内网 RDS，无需容器化
+#
+# S04 优化点：
+#   - 完善生产环境变量注入（REDIS_PASSWORD 从 deploy/.env 传递）
+#   - 修正健康检查超时/重试参数（适配 Python 应用启动慢特点）
+#   - 日志持久化：容器日志 + 应用日志双重挂载
+#   - CPU/内存资源限制符合生产实际负载
+#
+# 用法：
+#   1. cp deploy/.env.example deploy/.env && 填入 REDIS_PASSWORD
+#   2. 确认 backend/.env.production 所有占位符已填充完整
+#   3. cd deploy && docker compose up -d --build
+#   4. 查看日志：docker compose logs -f backend
+#   5. 健康检查：docker compose ps（等待 all healthy）
+#
+# 资源限制说明：
+#   - backend: 2.0核CPU / 2.0GB内存（Python + 定时任务 + DB连接池）
+#   - redis:   1.0核CPU / 512MB内存（内置 --maxmemory 512mb 硬限制）
+#   - admin:   0.5核CPU / 256MB内存（Nginx 静态文件，资源需求极低）
+#
+# 日志持久化：
+#   - 后端应用日志 → ../backend/logs/（宿主机挂载，保留历史日志）
+#   - Docker 容器日志 → json-file driver，10m × 3 文件轮转
+#   - Redis 数据持久化 → gaking-redis-data 命名 volume（AOF + RDB）
+#
+# 回滚命令：
+#   docker compose down
+#   docker tag gaking-backend:prod gaking-backend:prod-rollback-$(date +%Y%m%d)
+#   # 拉取/构建新镜像后重新启动
+#   docker compose pull && docker compose up -d --build
+# ============================================================
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: gaking-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --auto-aof-rewrite-percentage 100
+      --auto-aof-rewrite-min-size 64mb
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - redis-data:/data
+    networks:
+      - gaking-net
+    # 生产环境不暴露 Redis 端口，仅内部网络访问
+    # ports:
+    #   - "6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: gaking-backend:prod
+    container_name: gaking-backend
+    restart: unless-stopped
+    env_file:
+      - ../backend/.env.production
+    environment:
+      # 覆盖为容器网络内的 redis 服务名
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TZ: Asia/Shanghai
+      PYTHONUNBUFFERED: "1"
+      # 让 alembic/uvicorn 能 import src.* 模块
+      PYTHONPATH: /app
+    ports:
+      - "3003:3003"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gaking-net
+    volumes:
+      # 日志持久化
+      - ../backend/logs:/app/logs
+      # 上传文件持久化
+      - ../backend/static/uploads:/app/static/uploads
+      # 临时文件目录
+      - ../backend/tmp:/app/tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3003/healthz', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "app=gaking-backend"
+      - "environment=production"
+      - "managed-by=docker-compose"
+
+  admin:
+    build:
+      context: ../admin
+      dockerfile: Dockerfile
+    image: gaking-admin:prod
+    container_name: gaking-admin
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:80"
+    networks:
+      - gaking-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "app=gaking-admin"
+      - "environment=production"
+      - "managed-by=docker-compose"
+
+volumes:
+  redis-data:
+    name: gaking-redis-data
+
+networks:
+  gaking-net:
+    name: gaking-net
+    driver: bridge

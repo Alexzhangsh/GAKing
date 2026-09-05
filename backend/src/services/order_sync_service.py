@@ -49,6 +49,7 @@ from src.cps.adapter_factory import AdapterFactory
 from src.cps.circuit_breaker import BreakerState
 from src.cps.circuit_breaker_adapter import CircuitBreakerAdapter
 from src.dao.order_sync_dao import OrderSyncDAO
+from src.services.attribution.engine import AttributionEngine
 
 logger = logging.getLogger("service.order_sync")
 
@@ -735,17 +736,48 @@ class OrderSyncService:
                         }
                     )
             else:
-                # 新订单：构造入库数据
-                user_id = await self.sync_dao.find_user_id_by_channel_pid(
-                    o.channel_pid, channel_code
+                # 新订单：使用 AttributionEngine 跟单引擎匹配归属用户
+                attribution = AttributionEngine(self.sync_dao.session)
+                match_result = await attribution.resolve_user(
+                    out_order_no=o.origin_order_id,
+                    goods_id=o.goods_id or "",
+                    channel_code=channel_code,
+                    order_data={
+                        "pay_time": o.pay_time.isoformat() if o.pay_time else None,
+                        "goods_title": o.goods_title or "",
+                    },
                 )
-                if user_id == 0:
+                user_id = match_result.user_id if match_result.is_matched else 0
+
+                if not match_result.is_matched:
                     logger.warning(
-                        "[order_sync:%s] 未匹配用户 pid=%s out_order_no=%s，"
-                        "user_id=0 待认领",
+                        "[order_sync:%s] 跟单未匹配 user_id=0 "
+                        "out_order_no=%s reason=%s",
                         channel_code,
-                        o.channel_pid,
                         o.origin_order_id,
+                        match_result.extra.get("reason", "unknown"),
+                    )
+                    # 将无法归属的订单写入异常订单库
+                    await attribution.save_abnormal_order(
+                        out_order_no=o.origin_order_id,
+                        channel_code=channel_code,
+                        goods_id=o.goods_id or "",
+                        goods_title=o.goods_title or "",
+                        pay_amount=str(o.order_amount) if o.order_amount else "0.00",
+                        total_commission=str(o.total_commission) if o.total_commission else "0.00",
+                        order_status=o.order_status or "",
+                        pay_time=o.pay_time.isoformat() if o.pay_time else None,
+                        order_data=o.raw_data,
+                        match_result=match_result,
+                    )
+                else:
+                    logger.info(
+                        "[order_sync:%s] 跟单匹配成功: out_order_no=%s user_id=%s "
+                        "confidence=%s",
+                        channel_code,
+                        o.origin_order_id,
+                        user_id,
+                        match_result.confidence,
                     )
 
                 order_data = self._build_order_data(

@@ -102,7 +102,7 @@ class CommissionSettlementDAO(BaseDAO):
                     ~flow_subq,  # NOT EXISTS：无 ORDER 流水
                 )
             )
-            .order_by(Order.settle_time.asc().nullslast())
+            .order_by(Order.settle_time.asc())
         )
 
         count_query = select(func.count()).select_from(stmt.subquery())

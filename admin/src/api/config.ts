@@ -6,8 +6,7 @@ export interface SystemConfig {
   config_key: string
   config_value: string
   config_name: string
-  config_desc: string
-  sort_num: number
+  remark: string
   create_time: string
   update_time: string
 }
@@ -16,23 +15,24 @@ export interface SystemConfigCreate {
   config_key: string
   config_value: string
   config_name: string
-  config_desc?: string
-  sort_num?: number
+  remark?: string
 }
 
 export interface SystemConfigUpdate {
   config_value?: string
   config_name?: string
-  config_desc?: string
-  sort_num?: number
+  remark?: string
 }
 
 export const systemConfigApi = {
-  create: (data: SystemConfigCreate) => request.post('/admin/system-config', data),
-  get: (id: number) => request.get<SystemConfig>(`/admin/system-config/${id}`),
-  list: (params: { page: number; page_size: number }) => request.get<PageResponse<SystemConfig>>('/admin/system-config', { params }),
-  update: (id: number, data: SystemConfigUpdate) => request.put<SystemConfig>(`/admin/system-config/${id}`, data),
-  delete: (id: number) => request.delete(`/admin/system-config/${id}`)
+  list: (params: { page: number; page_size: number; config_key?: string }) => request.get<PageResponse<SystemConfig>>('/v1/admin/config/', { params }),
+  get: (configKey: string) => request.get<SystemConfig>(`/v1/admin/config/${configKey}`),
+  create: (data: SystemConfigCreate) => request.post<SystemConfig>('/v1/admin/config/', data),
+  update: (configKey: string, data: SystemConfigUpdate) => request.put<SystemConfig>(`/v1/admin/config/${configKey}`, data),
+  delete: (configKey: string) => request.delete(`/v1/admin/config/${configKey}`),
+  listRegistry: () => request.get('/v1/admin/config/registry'),
+  refreshCache: () => request.post('/v1/admin/config/cache/refresh'),
+  batchUpdate: (data: { items: Array<{ config_key: string; config_value: string }> }) => request.put('/v1/admin/config/batch', data),
 }
 
 export interface PayConfig {

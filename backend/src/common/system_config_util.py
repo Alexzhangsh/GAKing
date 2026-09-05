@@ -4,7 +4,7 @@ from typing import Any, Optional, Dict
 from sqlalchemy import select
 
 from src.db.init_db import DatabaseManager
-from src.db.models import GakingSystemConfig
+from src.models.system.system_config import SystemConfig as GakingSystemConfig
 from src.common.redis_client import RedisClient
 from src.config.constants import CACHE_KEY_SYSTEM_CONFIG
 

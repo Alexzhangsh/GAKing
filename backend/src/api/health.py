@@ -7,6 +7,7 @@ from typing import Dict, Any
 
 from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from src.config.env_config import EnvConfig
 from src.db.init_db import DatabaseManager
@@ -36,7 +37,7 @@ async def healthz():
 async def _check_mysql() -> Dict[str, str]:
     try:
         async with DatabaseManager.get_session() as session:
-            result = await session.execute("SELECT 1")
+            result = await session.execute(text("SELECT 1"))
             result.fetchone()
         return {"status": "connected", "message": "MySQL OK"}
     except Exception as e:

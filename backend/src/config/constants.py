@@ -149,6 +149,22 @@ WITHDRAW_SUBMIT_INTERVAL = 5
 
 
 # ════════════════════════════════════════════════════════════════════
+# B09 提现规则增强配置（不修改 B01-B08 已有常量，仅追加）
+# ════════════════════════════════════════════════════════════════════
+# 阶梯费率配置读穿缓存：gaking:prod:config:withdraw_tiers（JSON 数组，全局共享）
+# 由后台管理界面维护，WithdrawFeeCalculator 读取；无配置时回退单一费率
+CACHE_KEY_WITHDRAW_TIERS = f"{REDIS_PREFIX}config:withdraw_tiers"
+CACHE_TTL_WITHDRAW_TIERS = 300  # 阶梯费率缓存 TTL（秒），与单一费率对齐 5min
+# 单日提现限额兜底值（元）：gaking_pay_config 无配置时的风控兜底
+# 来源：4级《金角大王 CPS V2.0 分润规则定稿》风控参数
+WITHDRAW_DAILY_LIMIT = Decimal("50000.00")  # 单日累计提现上限 5 万元
+# 单日累计提现金额缓存：gaking:prod:withdraw:daily_used:{user_id}:{YYYYMMDD}
+# WithdrawRuleValidator 读取，提现成功后失效；TTL 到当日 23:59:59 自动过期
+CACHE_KEY_WITHDRAW_DAILY_USED = f"{REDIS_PREFIX}withdraw:daily_used:"
+CACHE_TTL_WITHDRAW_DAILY_USED = 86400  # 最大 24h（实际按到当日结束动态计算）
+
+
+# ════════════════════════════════════════════════════════════════════
 # B05 订单批量同步任务配置（scheduler/order_sync_jobs.py 使用，禁止硬编码）
 # ════════════════════════════════════════════════════════════════════
 
@@ -161,8 +177,8 @@ TASK_CRON_ORDER_SYNC_DTA = "6-59/10 * * * *"  # 6/16/26/36/46/56 分
 TASK_ORDER_SYNC_ENABLE = True  # 总开关（False 时三渠道任务全跳过）
 TASK_ORDER_SYNC_LOCK_TIMEOUT = 600  # 分布式锁超时（秒），单渠道单轮最长10分钟
 TASK_ORDER_SYNC_MYQ_ENABLE = True  # 喵有券渠道开关
-TASK_ORDER_SYNC_ORDERX_ENABLE = True  # 订单侠渠道开关
-TASK_ORDER_SYNC_DTA_ENABLE = True  # 大淘客渠道开关
+TASK_ORDER_SYNC_ORDERX_ENABLE = False  # 订单侠渠道开关（待 API Key 就绪后启用）
+TASK_ORDER_SYNC_DTA_ENABLE = False  # 大淘客渠道开关（待 API Key 就绪后启用）
 
 # ── 拉取与重试参数 ────────────────────────────────────────────────
 TASK_ORDER_SYNC_WINDOW_MINUTES = 30  # 单次拉取时间窗口长度（分钟）
@@ -243,3 +259,72 @@ CHANNEL_ORDER_STATUS_BY_CODE: dict = {
     "orderx": CHANNEL_ORDER_STATUS_ORDERX_MAP,
     "dta": CHANNEL_ORDER_STATUS_DTA_MAP,
 }
+
+
+# ════════════════════════════════════════════════════════════════════
+# B16 商品预热定时任务配置（goods_warming_jobs.py 使用，禁止硬编码）
+# ════════════════════════════════════════════════════════════════════
+
+# ── 总开关 ────────────────────────────────────────────────────────
+TASK_GOODS_WARMING_ENABLE = True  # 商品预热总开关
+TASK_GOODS_REFRESH_ENABLE = True  # 存量商品刷新总开关
+TASK_GOODS_CLEANUP_ENABLE = True  # 冷品清理总开关
+
+# ── 分布式锁超时 ──────────────────────────────────────────────────
+TASK_GOODS_WARMING_LOCK_TIMEOUT = 600  # 预热任务锁超时（秒），单次最长10分钟
+TASK_GOODS_REFRESH_LOCK_TIMEOUT = 600  # 刷新任务锁超时（秒）
+TASK_GOODS_CLEANUP_LOCK_TIMEOUT = 300  # 清理任务锁超时（秒）
+
+# ── 渠道预热 cron 表达式 ──────────────────────────────────────────
+# 喵有券：每日 01:00 和 13:00 各执行一次
+TASK_CRON_WARMING_MYQ = "0 1,13 * * *"
+# 订单侠：每日 01:30 和 13:30 各执行一次（错峰 30 分钟）
+TASK_CRON_WARMING_ORDERX = "30 1,13 * * *"
+
+# ── 渠道预热开关 ──────────────────────────────────────────────────
+TASK_WARMING_MYQ_ENABLE = True   # 喵有券预热开关
+TASK_WARMING_ORDERX_ENABLE = True  # 订单侠预热开关
+
+# ── 渠道预热筛选参数 ──────────────────────────────────────────────
+# 喵有券：佣金≥1%，售价 9.9-99 元
+TASK_WARMING_MYQ_MIN_COMMISSION_RATE = Decimal("1.00")  # 最低佣金比例 1%
+TASK_WARMING_MYQ_MIN_PRICE = Decimal("9.90")   # 最低售价 9.9 元
+TASK_WARMING_MYQ_MAX_PRICE = Decimal("99.00")  # 最高售价 99 元
+# 订单侠：佣金≥1%，月销量≥100
+TASK_WARMING_ORDERX_MIN_COMMISSION_RATE = Decimal("1.00")  # 最低佣金比例 1%
+TASK_WARMING_ORDERX_MIN_SALES = 100  # 最低月销量
+
+# ── 喵有券轮换类目（每日轮换一个，按索引取模） ──────────────────
+TASK_WARMING_MYQ_CATEGORIES = [
+    "女装", "男装", "美妆", "数码", "家居",
+    "食品", "母婴", "运动", "箱包", "配饰",
+]
+
+# ── 订单侠轮询类目（固定四类，按索引取模） ──────────────────────
+TASK_WARMING_ORDERX_CATEGORIES = [
+    "食品", "家居", "服饰", "美妆",
+]
+
+# ── 预热分页参数 ──────────────────────────────────────────────────
+TASK_WARMING_PAGE_SIZE = 100  # 单次拉取每页条数
+TASK_WARMING_MAX_PAGES = 3    # 单次预热最多拉取页数
+
+# ── 存量商品刷新 cron 表达式 ──────────────────────────────────────
+# 热门商品（popularity > 0）：每 6 小时
+TASK_CRON_REFRESH_HOT = "0 */6 * * *"
+# 普通商品（popularity = 0）：每日 02:00
+TASK_CRON_REFRESH_NORMAL = "0 2 * * *"
+
+# ── 冷品清理 cron 表达式 ──────────────────────────────────────────
+TASK_CRON_CLEANUP_EXPIRED = "10 2 * * *"  # 每日 02:10
+
+# ── 冷品清理参数 ──────────────────────────────────────────────────
+TASK_CLEANUP_EXPIRY_DAYS = 30   # 连续 N 天无浏览标记为过期
+TASK_CLEANUP_GRACE_DAYS = 7     # 过期后宽限期（天），到期软删除
+TASK_CLEANUP_BATCH_SIZE = 500   # 单次批量处理上限
+
+# ── Redis 键（预热任务游标，用于类目轮换） ────────────────────────
+# 实际 Redis key：gaking:prod:goods_warming:cursor:myq
+CACHE_KEY_GOODS_WARMING_CURSOR = "goods_warming:cursor:"
+# 游标 TTL：7 天，长期不执行自动重置
+CACHE_TTL_GOODS_WARMING_CURSOR = 7 * 24 * 3600

@@ -7,8 +7,11 @@ redis[async]>=5.0.0
 httpx>=0.25.0
 apscheduler>=3.10.0
 aiofiles>=23.0.0
+openpyxl>=3.1.0
 python-jose[cryptography]>=3.3.0
+PyJWT>=2.8.0
 passlib[bcrypt]>=1.7.0
+bcrypt>=4.0.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 prometheus-client>=0.17.0
@@ -18,3 +21,4 @@ pytest-cov>=4.0.0
 black>=23.0.0
 flake8>=6.0.0
 mypy>=1.0.0
+

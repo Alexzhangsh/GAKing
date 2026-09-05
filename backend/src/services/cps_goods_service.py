@@ -10,13 +10,15 @@ CPS 商品服务层
 """
 import logging
 from decimal import Decimal
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.cps.adapter.base_adapter import BaseCpsAdapter
 from src.cps.adapter.cps_exception import CpsChannelException, CpsErrorType
 from src.cps.adapter.dto import GoodsDTO, GoodsSearchResult
 from src.cps.adapter_factory import AdapterFactory
 from src.cps.cache.goods_cache import GoodsCacheManager
+from src.dao.goods_management_dao import GoodsManagementDAO
+from src.db.init_db import DatabaseManager
 from src.schemas.cps_goods import (
     BizException,
     ConvertLinkRequest,
@@ -69,6 +71,74 @@ class CpsGoodsService:
         )
 
     # ════════════════════════════════════════════════════
+    # 本地管理表覆盖（管理端编辑 → 小程序生效）
+    # ════════════════════════════════════════════════════
+
+    @staticmethod
+    async def _apply_local_overrides(
+        items: List[GoodsDTO], channel_code: str
+    ) -> List[GoodsDTO]:
+        """用本地 goods_management 管理表覆盖 CPS 渠道返回的商品字段，并过滤下架商品
+
+        管理端在后台编辑的价格/佣金/标题/主图/类目/店铺等字段存储在本地管理表，
+        CPS 搜索结果需应用这些覆盖；shelf_status=off_shelf 的商品从小程序搜索中移除。
+        覆盖在缓存读取之后执行，因此管理端编辑无需主动失效缓存即可实时生效。
+        """
+        if not items:
+            return items
+
+        goods_ids = [g.goods_id for g in items if g.goods_id]
+        if not goods_ids:
+            return items
+
+        async with DatabaseManager.get_session() as session:
+            dao = GoodsManagementDAO(session)
+            managed_list = await dao.list_by_goods_ids(goods_ids, channel_code)
+
+        managed_map: Dict[str, Any] = {m.goods_id: m for m in managed_list}
+
+        result: List[GoodsDTO] = []
+        for goods in items:
+            m = managed_map.get(goods.goods_id)
+            if m is None:
+                # 未纳入本地管理，保留渠道原始数据
+                result.append(goods)
+                continue
+
+            # 下架商品直接过滤
+            if m.shelf_status == "off_shelf":
+                continue
+
+            # 本地管理表字段非空/非零时覆盖渠道原始值
+            overrides: Dict[str, Any] = {}
+            if m.goods_title:
+                overrides["goods_title"] = m.goods_title
+            if m.goods_img:
+                overrides["goods_img"] = m.goods_img
+            if m.sale_price is not None and m.sale_price > 0:
+                overrides["sale_price"] = Decimal(str(m.sale_price))
+            if m.commission_rate is not None and m.commission_rate > 0:
+                overrides["commission_rate"] = Decimal(str(m.commission_rate))
+            if m.category:
+                overrides["category"] = m.category
+            if m.shop_name:
+                overrides["shop_name"] = m.shop_name
+
+            # 价格或佣金被覆盖时，重算预估佣金 = 售价 × 佣金率 / 100
+            if "sale_price" in overrides or "commission_rate" in overrides:
+                new_price = overrides.get("sale_price", goods.sale_price)
+                new_rate = overrides.get("commission_rate", goods.commission_rate)
+                overrides["estimate_commission"] = (
+                    new_price * new_rate / Decimal("100")
+                ).quantize(Decimal("0.01"))
+
+            if overrides:
+                goods = goods.model_copy(update=overrides)
+            result.append(goods)
+
+        return result
+
+    # ════════════════════════════════════════════════════
     # 商品搜索
     # ════════════════════════════════════════════════════
 
@@ -102,7 +172,6 @@ class CpsGoodsService:
                 size=request.size,
             )
         except CpsChannelException as e:
-            # 渠道异常降级：区分错误类型返回对应业务码
             logger.warning(
                 f"search_goods channel exception: channel={channel_code} "
                 f"keyword={keyword} error_type={e.error_type} msg={e}",
@@ -117,9 +186,14 @@ class CpsGoodsService:
             )
             raise BizException(code=500, msg="商品搜索服务异常") from e
 
+        # 应用本地管理表覆盖（价格/佣金/标题等），过滤下架商品
+        overridden_items = await self._apply_local_overrides(
+            result.items, channel_code
+        )
+
         # 转换出参
         items: List[GoodsItemResponse] = [
-            self._goods_dto_to_response(g) for g in result.items
+            self._goods_dto_to_response(g) for g in overridden_items
         ]
 
         return GoodsSearchResponse(

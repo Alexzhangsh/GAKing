@@ -5,6 +5,7 @@
 仅做数据存取，业务规则（状态机校验、手续费计算）在 Service 层
 """
 import logging
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select, and_, func
@@ -67,7 +68,11 @@ class UserWithdrawApplyDAO(BaseDAO):
         total = total_result.scalar() or 0
 
         offset = (page - 1) * page_size
-        page_query = stmt.order_by(UserWithdrawApply.create_time.desc()).offset(offset).limit(page_size)
+        page_query = (
+            stmt.order_by(UserWithdrawApply.create_time.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
         result = await self.session.execute(page_query)
         items = result.scalars().all()
 
@@ -110,7 +115,11 @@ class UserWithdrawApplyDAO(BaseDAO):
         total = total_result.scalar() or 0
 
         offset = (page - 1) * page_size
-        page_query = stmt.order_by(UserWithdrawApply.create_time.desc()).offset(offset).limit(page_size)
+        page_query = (
+            stmt.order_by(UserWithdrawApply.create_time.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
         result = await self.session.execute(page_query)
         items = result.scalars().all()
 
@@ -150,3 +159,54 @@ class UserWithdrawApplyDAO(BaseDAO):
                 result.user_id,
             )
         return result
+
+    # ══════════════════════════════════════════════════════
+    # B09 新增：单日累计提现金额查询（提现规则校验器使用）
+    # ══════════════════════════════════════════════════════
+
+    async def sum_apply_amount_by_user_and_date(
+        self,
+        user_id: int,
+        target_date: date,
+    ) -> "Decimal":
+        """查询用户指定日期的累计提现金额（不含 REJECTED 驳回单）
+
+        统计状态：PENDING / APPROVED / PROCESSING / SUCCESS（驳回单 REJECTED 不计入）
+        SQL 语义：
+            SELECT COALESCE(SUM(apply_amount), 0)
+            FROM user_withdraw_apply
+            WHERE user_id = :user_id
+              AND DATE(create_time) = :target_date
+              AND status != 'REJECTED'
+              AND is_delete = 0
+
+        Args:
+            user_id: 平台用户ID
+            target_date: 目标日期
+        Returns:
+            累计提现金额 (Decimal)，无记录返回 Decimal("0")
+        """
+        from datetime import timedelta
+        from decimal import Decimal
+
+        # 构造当日 0:00 ~ 次日 0:00 时间范围（左闭右开，利用 create_time 索引）
+        start = datetime.combine(target_date, datetime.min.time())
+        end = datetime.combine(target_date + timedelta(days=1), datetime.min.time())
+
+        stmt = select(func.coalesce(func.sum(UserWithdrawApply.apply_amount), 0)).where(
+            and_(
+                UserWithdrawApply.user_id == user_id,
+                UserWithdrawApply.create_time >= start,
+                UserWithdrawApply.create_time < end,
+                UserWithdrawApply.status != "REJECTED",
+                UserWithdrawApply.is_delete == False,  # noqa: E712
+            )
+        )
+        result = await self.session.execute(stmt)
+        total = result.scalar()
+        if total is None:
+            return Decimal("0")
+        try:
+            return Decimal(str(total))
+        except Exception:
+            return Decimal("0")

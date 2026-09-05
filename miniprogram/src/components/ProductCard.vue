@@ -1,70 +1,87 @@
 <!-- @ai-generated -->
+<!--
+  商品卡片组件
+  严格复用后端 GoodsItem 字段（src/schemas/cps_goods.py: GoodsItemResponse）
+  - 非会员：展示券后价 + 预估返利
+  - 点击卡片跳转商品详情页
+-->
 <template>
   <view class="product-card" @click="handleClick">
     <view class="product-image">
-      <image :src="cdnUrl" mode="aspectFill" class="image" />
-      <view v-if="item.discount" class="discount-tag">{{ item.discount }}折</view>
+      <image
+        :src="imageUrl"
+        mode="aspectFill"
+        class="image"
+        lazy-load
+        @error="handleImgError"
+      />
+      <view v-if="item.invalid" class="invalid-tag">已失效</view>
     </view>
     <view class="product-info">
-      <text class="product-title">{{ item.title }}</text>
-      <text class="product-desc">{{ item.desc }}</text>
+      <text class="product-title">{{ item.goods_title }}</text>
       <view class="product-price-row">
-        <view class="price-area">
+        <view class="price-main">
           <text class="price-symbol">¥</text>
-          <text class="price-value">{{ item.price }}</text>
+          <text class="price-value">{{ formatPrice(item.sale_price) }}</text>
         </view>
-        <text class="original-price">¥{{ item.original_price }}</text>
+        <text v-if="item.original_price > item.sale_price" class="original-price">
+          ¥{{ formatPrice(item.original_price) }}
+        </text>
       </view>
-      <view class="product-bottom">
-        <text class="commission">佣金 ¥{{ item.commission }}</text>
-        <view class="sales">
-          <text class="sales-icon">🔥</text>
-          <text class="sales-count">{{ item.sales }}人购买</text>
-        </view>
+      <view class="shop-row">
+        <text class="shop-name">{{ item.shop_name || '未知店铺' }}</text>
+        <text class="arrow-icon">›</text>
       </view>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import CdnUrlUtil from '@/utils/cdn'
+import type { GoodsItem } from '@/api/types'
 
-interface ProductCardProps {
-  item: {
-    id: number
-    title: string
-    desc: string
-    image_url: string
-    price: string | number
-    original_price: string | number
-    discount?: number
-    commission: string | number
-    sales: number
-  }
+export type ProductCardItem = GoodsItem & {
+  invalid?: boolean
 }
 
-const props = defineProps<ProductCardProps>()
-const emit = defineEmits<{
-  (e: 'click', item: ProductCardProps['item']): void
+const props = defineProps<{
+  item: ProductCardItem
 }>()
 
-const cdnUrl = computed(() => {
-  return CdnUrlUtil.buildFitUrl(props.item.image_url, 300, 300)
+const emit = defineEmits<{
+  (e: 'click', item: ProductCardItem): void
+}>()
+
+const imgError = ref(false)
+
+const imageUrl = computed(() => {
+  if (imgError.value || !props.item.goods_img) {
+    return '/static/placeholder.png'
+  }
+  return CdnUrlUtil.buildFitUrl(props.item.goods_img, 300, 300)
 })
 
 const handleClick = () => {
   emit('click', props.item)
+}
+
+const handleImgError = () => {
+  imgError.value = true
+}
+
+const formatPrice = (val: number): string => {
+  if (val === null || val === undefined || isNaN(val)) return '0'
+  return Math.floor(val).toString()
 }
 </script>
 
 <style lang="scss" scoped>
 .product-card {
   background: #fff;
-  border-radius: 12rpx;
+  border-radius: 20rpx;
   overflow: hidden;
-  margin-bottom: 20rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.08);
 
   &:active {
     transform: scale(0.98);
@@ -75,106 +92,92 @@ const handleClick = () => {
 .product-image {
   position: relative;
   width: 100%;
-  height: 300rpx;
+  height: 320rpx;
+  background: #f5f5f5;
 
   .image {
     width: 100%;
     height: 100%;
   }
 
-  .discount-tag {
+  .invalid-tag {
     position: absolute;
     top: 16rpx;
-    left: 16rpx;
-    background: linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%);
+    right: 16rpx;
+    background: rgba(0, 0, 0, 0.6);
     color: #fff;
     font-size: 22rpx;
     padding: 6rpx 16rpx;
     border-radius: 6rpx;
-    font-weight: 500;
   }
 }
 
 .product-info {
-  padding: 20rpx;
+  padding: 20rpx 20rpx 24rpx;
+}
 
-  .product-title {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    overflow: hidden;
-    font-size: 28rpx;
-    color: #333;
-    line-height: 1.4;
-    margin-bottom: 12rpx;
-    font-weight: 500;
-  }
+.product-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 28rpx;
+  color: #1a1a1a;
+  line-height: 1.4;
+  margin-bottom: 16rpx;
+  font-weight: 500;
+  min-height: 78rpx;
+}
 
-  .product-desc {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
-    overflow: hidden;
-    font-size: 24rpx;
-    color: #999;
-    margin-bottom: 16rpx;
-  }
+.product-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
 
-  .product-price-row {
+  .price-main {
     display: flex;
     align-items: baseline;
-    gap: 12rpx;
-    margin-bottom: 12rpx;
 
-    .price-area {
-      display: flex;
-      align-items: baseline;
-
-      .price-symbol {
-        font-size: 24rpx;
-        color: #ff6b00;
-        font-weight: 600;
-      }
-
-      .price-value {
-        font-size: 40rpx;
-        color: #ff6b00;
-        font-weight: 700;
-      }
+    .price-symbol {
+      font-size: 26rpx;
+      color: var(--amber, #ff9500);
+      font-weight: 600;
     }
 
-    .original-price {
-      font-size: 24rpx;
-      color: #bbb;
-      text-decoration: line-through;
+    .price-value {
+      font-size: 44rpx;
+      color: var(--amber, #ff9500);
+      font-weight: 700;
+      line-height: 1;
     }
   }
 
-  .product-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  .original-price {
+    font-size: 24rpx;
+    color: #bbb;
+    text-decoration: line-through;
+  }
+}
 
-    .commission {
-      font-size: 24rpx;
-      color: #52c41a;
-      font-weight: 500;
-    }
+.shop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 
-    .sales {
-      display: flex;
-      align-items: center;
-      gap: 4rpx;
+  .shop-name {
+    font-size: 22rpx;
+    color: #999;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
 
-      .sales-icon {
-        font-size: 22rpx;
-      }
-
-      .sales-count {
-        font-size: 22rpx;
-        color: #999;
-      }
-    }
+  .arrow-icon {
+    font-size: 32rpx;
+    color: #ccc;
+    margin-left: 8rpx;
   }
 }
 </style>

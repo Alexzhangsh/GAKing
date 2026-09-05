@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional
 from src.common.lock_util import LockUtil
 from src.common.pay_config_util import PayConfigUtil, WithdrawFeeConfig
 from src.common.redis_client import RedisClient
+from src.common.withdraw_rule_validator import WithdrawRuleValidator
 from src.config.constants import (
     IDEMPOTENT_KEY_WITHDRAW_SUBMIT,
     LOCK_KEY_WITHDRAW_APPLY,
@@ -136,7 +137,7 @@ class WithdrawService:
             raise ValueError("操作过于频繁，请稍后再试")
         await RedisClient.expire(idem_key, WITHDRAW_SUBMIT_INTERVAL)
 
-        # 2. 门槛校验
+        # 2. 门槛校验（保留原有快速校验，规则校验器内也会校验但此处提前拦截减少后续开销）
         if amount < WITHDRAW_MIN_AMOUNT:
             raise ValueError(f"最低提现金额 {WITHDRAW_MIN_AMOUNT} 元")
 
@@ -148,9 +149,10 @@ class WithdrawService:
             raise ValueError("当前有提现操作正在处理，请稍后再试")
 
         try:
-            # 动态读取提现手续费配置（Redis 读穿 + DB 回源 + 常量兜底，恒非空）
-            fee_cfg = await PayConfigUtil.get_withdraw_config()
-            fee = self._calc_fee(amount, fee_cfg)
+            # B09 增强：注入规则校验器（最低金额+单日限额+冻结足额+阶梯手续费计算）
+            # 替换原 _calc_fee 单一费率计算，校验失败抛 ValueError（与原风格一致）
+            validator = WithdrawRuleValidator(self.account_dao, self.apply_dao)
+            fee, tier_label = await validator.validate_all(user_id, amount)
             actual_amount = (amount - fee).quantize(WITHDRAW_FEE_QUANTIZE)
             apply_no = self._gen_apply_no()
 
@@ -186,13 +188,17 @@ class WithdrawService:
                 )
                 raise
 
+            # B09：提现申请成功后失效单日累计缓存（确保下次校验查最新值）
+            await WithdrawRuleValidator.invalidate_daily_used_cache(user_id)
+
             logger.info(
-                "[withdraw] 发起提现成功 user_id=%s apply_no=%s amount=%s fee=%s actual=%s",
+                "[withdraw] 发起提现成功 user_id=%s apply_no=%s amount=%s fee=%s actual=%s tier=%s",
                 user_id,
                 apply_no,
                 amount,
                 fee,
                 actual_amount,
+                tier_label,
             )
             return apply_record.to_dict()
         finally:

@@ -1,0 +1,87 @@
+{
+  "script": "pre_check_db",
+  "version": "S04-9",
+  "checks": [
+    {
+      "name": "渠道[myq]",
+      "status": "PASS",
+      "detail": "喵有券 状态=启用（符合预期 启用）"
+    },
+    {
+      "name": "渠道[orderx]",
+      "status": "PASS",
+      "detail": "订单侠 状态=停用（符合预期 停用）"
+    },
+    {
+      "name": "渠道[dta]",
+      "status": "PASS",
+      "detail": "大淘客 状态=停用（符合预期 停用）"
+    },
+    {
+      "name": "消息模板",
+      "status": "PASS",
+      "detail": "全部 7 个基础模板已初始化且启用"
+    },
+    {
+      "name": "基础角色",
+      "status": "PASS",
+      "detail": "全部 4 个基础角色已初始化且启用"
+    },
+    {
+      "name": "超级管理员",
+      "status": "WARN",
+      "detail": "「超级管理员」角色存在但无绑定用户（生产需执行 init_super_admin.py --username admin --password xxx）"
+    },
+    {
+      "name": "权限码唯一性",
+      "status": "PASS",
+      "detail": "权限码清单无重复，共 30 项"
+    },
+    {
+      "name": "权限码绑定",
+      "status": "PASS",
+      "detail": "全部 30 项权限码均已绑定（含 3 项超管专属权限由 * 覆盖: ['config:manage', 'menu:manage', 'rbac:manage']）"
+    },
+    {
+      "name": "超管通配符",
+      "status": "PASS",
+      "detail": "超管通配符 * 已绑定"
+    },
+    {
+      "name": "角色[superadmin]",
+      "status": "PASS",
+      "detail": "1 项权限"
+    },
+    {
+      "name": "角色[超级管理员]",
+      "status": "PASS",
+      "detail": "1 项权限"
+    },
+    {
+      "name": "角色[运营管理员]",
+      "status": "PASS",
+      "detail": "15 项权限"
+    },
+    {
+      "name": "角色[财务管理员]",
+      "status": "PASS",
+      "detail": "13 项权限"
+    },
+    {
+      "name": "角色[客服管理员]",
+      "status": "PASS",
+      "detail": "6 项权限"
+    },
+    {
+      "name": "角色[只读审计员]",
+      "status": "PASS",
+      "detail": "4 项权限"
+    }
+  ],
+  "summary": {
+    "pass": 14,
+    "fail": 0,
+    "warn": 1
+  },
+  "result": "PASS"
+}

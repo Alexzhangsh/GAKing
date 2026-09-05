@@ -1,9 +1,51 @@
 // @ai-generated
+/* 金角大王小程序全局样式（M05 统一优化 · 黄黑闲鱼风重构） */
+
+/* ── 全局 CSS 变量（黄黑主题：黄色为主背景强调，黑色为主内容/按钮） ── */
 page {
+  /* 黄黑主品牌令牌 */
+  --yellow: #ffd400;
+  --amber: #ff9500;
+  --yellow-soft: #fff0b0;
+  --yellow-line: rgba(255, 212, 0, 0.5);
+  --ink: #1a1a1a;
+  --ink-sub: #8a8a8a;
+
+  /* 语义令牌（组件消费，映射到黄黑体系） */
+  --color-primary: #1a1a1a;
+  --color-primary-light: #ff9500;
+  --color-primary-bg: #fff0b0;
+  --color-success: #52c41a;
+  --color-success-bg: #f6ffed;
+  --color-warning: #faad14;
+  --color-warning-bg: #fff7e6;
+  --color-danger: #ff4d4f;
+  --color-danger-bg: #fff1f0;
+  --color-info: #1890ff;
+  --color-info-bg: #e6f7ff;
+  --color-text: #1a1a1a;
+  --color-text-secondary: #666666;
+  --color-text-placeholder: #999999;
+  --color-text-disabled: #bbbbbb;
+  --color-border: #f0f0f0;
+  --color-bg: #f2f3f5;
+  --color-bg-white: #ffffff;
+  --radius-sm: 12rpx;
+  --radius-md: 24rpx;
+  --radius-lg: 32rpx;
+  --radius-full: 999rpx;
+  --shadow-card: 0 8rpx 24rpx rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 10rpx 28rpx rgba(0, 0, 0, 0.06);
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 600;
+  --font-weight-bold: 700;
+
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 28rpx;
-  color: #333;
-  background-color: #f5f5f5;
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text);
+  background-color: var(--color-bg);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -21,7 +63,7 @@ button {
   background: none;
   border: none;
   outline: none;
-  
+
   &::after {
     border: none;
   }
@@ -31,11 +73,25 @@ input {
   outline: none;
 }
 
+/* ── 安全区适配（iPhone X+ 刘海屏/底部安全区） ── */
 .safe-area-bottom {
   padding-bottom: constant(safe-area-inset-bottom);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.safe-area-top {
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-inset {
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ── Flex 布局工具类 ── */
 .flex {
   display: flex;
 }
@@ -44,8 +100,20 @@ input {
   flex-direction: column;
 }
 
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
 .items-center {
   align-items: center;
+}
+
+.items-start {
+  align-items: flex-start;
+}
+
+.items-end {
+  align-items: flex-end;
 }
 
 .justify-center {
@@ -56,14 +124,60 @@ input {
   justify-content: space-between;
 }
 
+.justify-around {
+  justify-content: space-around;
+}
+
 .flex-1 {
   flex: 1;
 }
 
+.flex-shrink-0 {
+  flex-shrink: 0;
+}
+
+/* ── 文本工具类 ── */
 .text-center {
   text-align: center;
 }
 
+.text-right {
+  text-align: right;
+}
+
+.text-primary {
+  color: var(--color-primary);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-placeholder {
+  color: var(--color-text-placeholder);
+}
+
+.text-danger {
+  color: var(--color-danger);
+}
+
+.text-success {
+  color: var(--color-success);
+}
+
+.font-bold {
+  font-weight: var(--font-weight-bold);
+}
+
+.font-medium {
+  font-weight: var(--font-weight-medium);
+}
+
+.font-light {
+  font-weight: var(--font-weight-light);
+}
+
+/* ── 文本省略 ── */
 .ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -75,4 +189,40 @@ input {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+}
+
+.ellipsis-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+/* ── 间距工具类 ── */
+.p-20 { padding: 20rpx; }
+.p-30 { padding: 30rpx; }
+.px-20 { padding-left: 20rpx; padding-right: 20rpx; }
+.px-30 { padding-left: 30rpx; padding-right: 30rpx; }
+.py-20 { padding-top: 20rpx; padding-bottom: 20rpx; }
+.py-30 { padding-top: 30rpx; padding-bottom: 30rpx; }
+.mt-20 { margin-top: 20rpx; }
+.mt-30 { margin-top: 30rpx; }
+.mb-20 { margin-bottom: 20rpx; }
+.mb-30 { margin-bottom: 30rpx; }
+.gap-20 { gap: 20rpx; }
+
+/* ── 卡片容器（统一列表项样式） ── */
+.card {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-md);
+  padding: 24rpx;
+  box-shadow: var(--shadow-card);
+}
+
+/* ── 隐藏滚动条（小程序 scroll-view 残留滚动条） ── */
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  color: transparent;
 }

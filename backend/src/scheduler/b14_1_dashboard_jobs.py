@@ -1,0 +1,141 @@
+# @ai-generated
+"""
+B14-1 数据大盘定时预计算任务
+
+任务说明：
+每30分钟预计算大盘卡片数据并写入 Redis 缓存，
+避免用户访问时实时聚合查询压垮数据库。
+
+设计约定：
+1. 使用分布式锁防止集群并发执行
+2. 预计算失败不阻断整体流程
+3. 直接复用 B14DashboardService 和 DashboardQueryDAO
+"""
+import json
+import logging
+import traceback
+from datetime import datetime
+from typing import Any, Dict
+
+from src.common.lock_util import LockUtil
+from src.common.redis_client import RedisClient
+from src.config.b13_b14_constants import (
+    CACHE_KEY_DASHBOARD_CARDS,
+    CACHE_TTL_DASHBOARD,
+)
+from src.config.b14_1_constants import (
+    TASK_DASHBOARD_PRECOMPUTE_ENABLE,
+    TASK_DASHBOARD_PRECOMPUTE_LOCK_TIMEOUT,
+    TASK_CRON_DASHBOARD_PRECOMPUTE,
+)
+from src.dao.dashboard_query_dao import DashboardQueryDAO
+from src.db.init_db import DatabaseManager
+from src.scheduler.scheduler import TaskScheduler
+
+logger = logging.getLogger("scheduler.b14_dashboard")
+
+
+async def dashboard_precompute() -> Dict[str, Any]:
+    """大盘数据预计算任务
+
+    每30分钟执行一次，预计算大盘卡片数据并写入 Redis 缓存。
+    如果缓存已存在且未过期，则跳过更新。
+
+    Returns:
+        {"status": "success"|"skipped"|"failed", "message": str,
+         "computed_at": str}
+    """
+    task_name = "dashboard_precompute"
+
+    if not TASK_DASHBOARD_PRECOMPUTE_ENABLE:
+        logger.info("[%s] 任务开关关闭，跳过执行", task_name)
+        return {"status": "skipped", "message": "任务开关关闭"}
+
+    computed_at = datetime.now().isoformat()
+
+    try:
+        async with DatabaseManager.get_session() as session:
+            dao = DashboardQueryDAO(session)
+            cards_data = await dao.get_cards_data()
+
+        # 写入 Redis 缓存（覆盖更新）
+        try:
+            await RedisClient.set(
+                CACHE_KEY_DASHBOARD_CARDS,
+                json.dumps(cards_data, ensure_ascii=False),
+                ex=CACHE_TTL_DASHBOARD,
+            )
+        except Exception as e:
+            logger.warning("[%s] Redis 缓存写入失败: %s", task_name, e)
+            return {
+                "status": "failed",
+                "message": f"缓存写入失败: {e}",
+                "computed_at": computed_at,
+            }
+
+        logger.info(
+            "[%s] 预计算完成: total_orders=%s, computed_at=%s",
+            task_name, cards_data.get("total_orders", "?"), computed_at,
+        )
+        return {
+            "status": "success",
+            "message": "预计算成功",
+            "computed_at": computed_at,
+            "cards_data": cards_data,
+        }
+
+    except Exception as e:
+        logger.error("[%s] 预计算失败: %s", task_name, e, exc_info=True)
+        return {
+            "status": "failed",
+            "message": str(e),
+            "computed_at": computed_at,
+        }
+
+
+# ── 分布式锁包装 ───────────────────────────────────────────
+
+
+async def _run_with_lock() -> Dict[str, Any]:
+    """任务执行包装：分布式锁 + 调用 + 异常兜底
+
+    S04 P2-1：锁冲突时先短等待重试（5s），降低任务跳过概率；
+    仍失败则记录锁冲突计数并跳过。
+    """
+    lock_owner = None
+    task_name = "dashboard_precompute"
+    try:
+        lock_owner = await LockUtil.acquire_with_wait(
+            f"scheduler:{task_name}",
+            timeout=TASK_DASHBOARD_PRECOMPUTE_LOCK_TIMEOUT,
+            wait_timeout=5,
+            poll_interval=0.5,
+        )
+        if lock_owner is None:
+            await LockUtil.record_lock_conflict(task_name)
+            logger.warning("[%s] 等待5s后仍未获取到分布式锁，跳过本次执行", task_name)
+            return {"status": "skipped", "message": "未获取到分布式锁，跳过"}
+        return await dashboard_precompute()
+    except Exception as e:
+        logger.error("[%s] 任务执行异常: %s\n%s", task_name, e, traceback.format_exc())
+        return {"status": "failed", "message": str(e)}
+    finally:
+        if lock_owner is not None:
+            await LockUtil.release_lock(f"scheduler:{task_name}", lock_owner)
+
+
+# ── 注册 ───────────────────────────────────────────────────
+
+
+def register_b14_1_dashboard_jobs() -> None:
+    """注册数据大盘预计算定时任务"""
+    TaskScheduler.add_cron_task(
+        func=_run_with_lock,
+        name="dashboard_precompute",
+        cron_expr=TASK_CRON_DASHBOARD_PRECOMPUTE,
+        args=(),
+    )
+    logger.info(
+        "B14-1 dashboard precompute job registered: %s",
+        TASK_CRON_DASHBOARD_PRECOMPUTE,
+    )

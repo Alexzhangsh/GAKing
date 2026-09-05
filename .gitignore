@@ -8,6 +8,7 @@ node_modules/
 .pnp
 .pnp.js
 .venv/
+.venv_new/
 venv/
 ENV/
 env/

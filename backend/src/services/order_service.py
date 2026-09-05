@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from src.config.constants import OrderStatus
 from src.dao.order_dao import OrderDAO
 from src.dao.commission_flow_dao import CommissionFlowDAO
+from src.dao.user_commission_account_dao import UserCommissionAccountDAO
 
 logger = logging.getLogger("service.order")
 
@@ -48,13 +49,14 @@ TRANSFER_STATUS_FAILED = "FAILED"
 class OrderService:
     """订单业务服务
 
-    通过构造函数注入 OrderDAO / CommissionFlowDAO，业务规则在此层校验
+    通过构造函数注入 OrderDAO / CommissionFlowDAO / UserCommissionAccountDAO，业务规则在此层校验
     金额统一使用 Decimal，入库保持 Numeric 定点小数
     """
 
-    def __init__(self, order_dao: OrderDAO, flow_dao: CommissionFlowDAO):
+    def __init__(self, order_dao: OrderDAO, flow_dao: CommissionFlowDAO, account_dao: UserCommissionAccountDAO):
         self.order_dao = order_dao
         self.flow_dao = flow_dao
+        self.account_dao = account_dao
 
     # ── 1. 渠道订单入库（幂等防重复） ────────────────────
 
@@ -125,6 +127,21 @@ class OrderService:
                 existing.id,
             )
             return existing.to_dict()
+
+        # 自动确保用户佣金账户存在（首次订单时自动创建）
+        try:
+            account = await self.account_dao.get_or_create_by_user_id(user_id)
+            logger.info(
+                "用户佣金账户已就绪: user_id=%s, account_id=%s",
+                user_id,
+                account.id,
+            )
+        except Exception as e:
+            logger.warning(
+                "创建用户佣金账户失败（不阻断订单创建）: user_id=%s, error=%s",
+                user_id,
+                str(e),
+            )
 
         # 入库
         order_data = {

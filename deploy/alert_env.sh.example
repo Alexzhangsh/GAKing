@@ -1,0 +1,5 @@
+# 金角大王 - 飞书机器人告警配置模板
+# 使用：复制为 alert_env.sh 并填入 Webhook（服务器端实际文件：/opt/gaking/deploy/alert_env.sh）
+# 创建方法：飞书群「金角大王运维」→ 设置 → 群机器人 → 添加自定义机器人 → 复制 Webhook
+# 安全：本文件含机密，禁止提交 git；rsync 同步代码时必须排除
+WEBHOOK_URL=""

@@ -602,6 +602,208 @@ class TestOrderPullResult:
         assert r.start_time == start
 
 
+# ── 订单侠适配器异步完整链路测试 ──────────────────────────
+
+
+class TestDingdanxiaAsyncFlows:
+    """订单侠适配器异步方法完整链路测试（mock HTTP）
+
+    覆盖 search_goods / convert_link / pull_order / health_check
+    的正常路径与异常路径，验证字段映射、异常封装、日志埋点。
+    """
+
+    def _make_adapter(self):
+        from src.cps.adapter.dingdanxia_adapter import DingdanxiaAdapter
+
+        return DingdanxiaAdapter(apikey="test_key")
+
+    @pytest.mark.asyncio
+    async def test_search_goods_success(self, mock_orderx_raw_data):
+        """搜索成功：字段映射正确"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(
+            return_value={
+                "code": 200,
+                "msg": "ok",
+                "data": {"list": [mock_orderx_raw_data], "total": 1},
+            }
+        )
+        with patch.object(mod, "post_json", mock_post):
+            result = await adapter.search_goods("蓝牙耳机", page=1, size=20)
+
+        assert result.total == 1
+        assert len(result.items) == 1
+        goods = result.items[0]
+        assert goods.goods_id == "ITEM_12345"
+        assert goods.goods_title == "测试蓝牙耳机 降噪高音质"
+        assert goods.sale_price == Decimal("199.00")
+        assert goods.commission_rate == Decimal("5.00")
+        assert goods.source_channel == "orderx"
+
+    @pytest.mark.asyncio
+    async def test_search_goods_api_error(self):
+        """搜索接口业务错误：抛出 CpsChannelException(API_ERROR)"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from src.cps.adapter.cps_exception import CpsChannelException, CpsErrorType
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(return_value={"code": 500, "msg": "服务器错误"})
+        with patch.object(mod, "post_json", mock_post):
+            with pytest.raises(CpsChannelException) as exc_info:
+                await adapter.search_goods("test")
+        assert exc_info.value.error_type == CpsErrorType.API_ERROR
+        assert "订单侠" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_search_goods_skip_bad_item(self, mock_orderx_raw_data):
+        """搜索：单条商品字段异常被跳过，不影响整体"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        bad_item = {"item_id": "BAD", "price": "not-a-number"}
+        mock_post = AsyncMock(
+            return_value={
+                "code": 200,
+                "data": {"list": [mock_orderx_raw_data, bad_item], "total": 2},
+            }
+        )
+        with patch.object(mod, "post_json", mock_post):
+            result = await adapter.search_goods("test")
+
+        assert len(result.items) == 1
+        assert result.items[0].goods_id == "ITEM_12345"
+
+    @pytest.mark.asyncio
+    async def test_convert_link_success(self):
+        """转链成功：share_url 非空"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(
+            return_value={
+                "code": 200,
+                "data": {
+                    "share_url": "https://e.tb.cn/h/xxxx",
+                    "relation_id": "mm_123",
+                    "commission": "9.95",
+                    "item_id": "ITEM_12345",
+                },
+            }
+        )
+        with patch.object(mod, "post_json", mock_post):
+            result = await adapter.convert_link("https://item.taobao.com/x", "mm_123")
+
+        assert result.promote_url == "https://e.tb.cn/h/xxxx"
+        assert result.channel_pid == "mm_123"
+        assert result.estimate_commission == Decimal("9.95")
+        assert result.goods_id == "ITEM_12345"
+
+    @pytest.mark.asyncio
+    async def test_convert_link_empty_share_url(self):
+        """转链结果缺少 share_url：抛出 CpsChannelException"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from src.cps.adapter.cps_exception import CpsChannelException, CpsErrorType
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(return_value={"code": 200, "data": {"relation_id": "x"}})
+        with patch.object(mod, "post_json", mock_post):
+            with pytest.raises(CpsChannelException) as exc_info:
+                await adapter.convert_link("https://item.taobao.com/x", "mm_123")
+        assert exc_info.value.error_type == CpsErrorType.API_ERROR
+        assert "share_url" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_convert_link_api_error(self):
+        """转链接口业务错误：抛出 CpsChannelException"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from src.cps.adapter.cps_exception import CpsChannelException
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(return_value={"code": 400, "msg": "参数错误"})
+        with patch.object(mod, "post_json", mock_post):
+            with pytest.raises(CpsChannelException):
+                await adapter.convert_link("https://item.taobao.com/x", "mm_123")
+
+    @pytest.mark.asyncio
+    async def test_pull_order_success(self, mock_orderx_order_data):
+        """订单拉取成功：字段映射正确"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(
+            return_value={
+                "code": 200,
+                "data": {"list": [mock_orderx_order_data], "total": 1},
+            }
+        )
+        start = datetime(2026, 1, 1, 0, 0)
+        end = datetime(2026, 1, 1, 0, 30)
+        with patch.object(mod, "post_json", mock_post):
+            result = await adapter.pull_order(start, end)
+
+        assert result.total == 1
+        order = result.orders[0]
+        assert order.origin_order_id == "TB2026010100012345"
+        assert order.order_amount == Decimal("199.00")
+        assert order.order_status == "已付款"
+        assert order.channel_code == "orderx"
+        assert order.pay_time is not None
+
+    @pytest.mark.asyncio
+    async def test_pull_order_api_error(self):
+        """订单拉取接口业务错误：抛出 CpsChannelException"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from src.cps.adapter.cps_exception import CpsChannelException, CpsErrorType
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(return_value={"code": 500, "msg": "订单接口错误"})
+        start = datetime(2026, 1, 1, 0, 0)
+        end = datetime(2026, 1, 1, 0, 30)
+        with patch.object(mod, "post_json", mock_post):
+            with pytest.raises(CpsChannelException) as exc_info:
+                await adapter.pull_order(start, end)
+        assert exc_info.value.error_type == CpsErrorType.API_ERROR
+
+    @pytest.mark.asyncio
+    async def test_health_check_success(self):
+        """健康探测成功"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(return_value={"code": 200})
+        with patch.object(mod, "post_json", mock_post):
+            assert await adapter.health_check() is True
+
+    @pytest.mark.asyncio
+    async def test_health_check_failure(self):
+        """健康探测失败：返回 False 不抛异常"""
+        from src.cps.adapter import dingdanxia_adapter as mod
+        from src.cps.adapter.cps_exception import CpsChannelException, CpsErrorType
+        from unittest.mock import AsyncMock, patch
+
+        adapter = self._make_adapter()
+        mock_post = AsyncMock(
+            side_effect=CpsChannelException(
+                error_type=CpsErrorType.API_ERROR,
+                message="接口错误",
+                channel_name="订单侠",
+            )
+        )
+        with patch.object(mod, "post_json", mock_post):
+            assert await adapter.health_check() is False
+
+
 # ── HTTP 客户端工具测试 ──────────────────────────
 
 
