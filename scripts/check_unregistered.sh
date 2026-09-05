@@ -14,6 +14,10 @@ cd "$REPO"
 
 # 已登记批次号（清单表格第一列，形如 S15-1 / M07-5）
 REGISTERED=$(grep -oE '^\| *[A-Z]+[0-9]+(-[0-9]+)* *\|' "$LIST" | sed -E 's/^\| *//; s/ *\|$//' | sort -u)
+# 交接单中引用的 git commit（经交接单关联视为已登记，如"完整变更范围 = git commit 0e2c18c"）
+KNOWN_COMMITS=$(grep -rhoE "git commit [0-9a-f]{7,40}" "$REPO/docs/发布协作/交接单/" 2>/dev/null | grep -oE "[0-9a-f]{7,40}" | sort -u)
+# 已确认豁免的提交（人工确认过无需登记：如项目初始化）
+EXEMPT_PATTERNS="初始化金角大王|chore: 初始化"
 
 echo "=== 已登记批次 ==="
 echo "${REGISTERED:-（清单为空）}" | sed 's/^/  /'
@@ -29,8 +33,12 @@ while IFS= read -r line; do
   HASH=$(echo "$line" | awk '{print $1}')
   MSG=$(echo "$line" | cut -d' ' -f2-)
   TID=$(echo "$MSG" | grep -oE '^[A-Z]+[0-9]+-[0-9]+' | head -1)
-  if [ -z "$TID" ]; then
-    echo "  ❌ 提交无任务编号（无法自动关联批次）: $HASH $MSG"
+  if echo "$KNOWN_COMMITS" | grep -qx "$HASH"; then
+    echo "  ✅ 已登记（经交接单关联）: $HASH $MSG"
+  elif echo "$MSG" | grep -qE "$EXEMPT_PATTERNS"; then
+    echo "  ✅ 已确认豁免（人工确认无需登记）: $HASH $MSG"
+  elif [ -z "$TID" ]; then
+    echo "  ❌ 提交无任务编号且无交接单关联（无法追踪）: $HASH $MSG"
     RC=1
   elif ! grep -qE "^\| *$TID *\|" "$LIST"; then
     echo "  ❌ 提交未在批次清单登记: $HASH $MSG"
@@ -38,6 +46,7 @@ while IFS= read -r line; do
   else
     echo "  ✅ $TID 已登记: $HASH $MSG"
   fi
+
 done < "$TMP"
 rm -f "$TMP"
 
