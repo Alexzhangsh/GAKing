@@ -13,7 +13,8 @@ import urllib.error
 import urllib.parse
 from datetime import datetime
 
-BASE = "https://api.dftsh.top"
+import os
+BASE = os.environ.get("BASE_URL", "https://api.dftsh.top")
 
 TOKEN = sys.argv[1] if len(sys.argv) > 1 else ""
 

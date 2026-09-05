@@ -184,7 +184,7 @@ async def get_account_detail(
         account = await service.get_account_by_user_id(user_id)
         if account is None:
             return error_response(
-                message=f"用户账户不存在: user_id={user_id}",
+                msg=f"用户账户不存在: user_id={user_id}",
                 request_id=request_id,
             )
         return success_response(data=account, request_id=request_id)

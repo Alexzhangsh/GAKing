@@ -19,7 +19,10 @@ env/
 
 # Alembic
 alembic.ini
-alembic/
+# 注：alembic/versions 迁移文件必须纳入版本控制（2026-09-05 发布测试发现：
+# 整体忽略导致迁移链不可复现、全新库无法升级；仅忽略运行产生的日志与临时产物）
+alembic/env.pyc
+alembic/__pycache__/
 
 # Logs
 *.log

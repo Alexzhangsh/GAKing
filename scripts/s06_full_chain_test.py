@@ -13,7 +13,8 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-BASE = "https://api.dftsh.top"
+import os
+BASE = os.environ.get("BASE_URL", "https://api.dftsh.top")
 
 # 测试用户（生产库 测试用户1）
 USER_ID = 7

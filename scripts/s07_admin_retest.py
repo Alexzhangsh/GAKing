@@ -12,7 +12,8 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-BASE = "https://api.dftsh.top"
+import os
+BASE = os.environ.get("BASE_URL", "https://api.dftsh.top")
 
 ADMIN_TOKEN = sys.argv[1] if len(sys.argv) > 1 else ""
 USER_TOKEN = sys.argv[2] if len(sys.argv) > 2 else ""

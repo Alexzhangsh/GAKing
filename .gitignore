@@ -97,3 +97,4 @@ scripts/cdn_cert_alert_config.local
 *.zip
 *.tar.gz
 *.tar
+.deploy_backup/
