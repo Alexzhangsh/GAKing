@@ -35,10 +35,19 @@
 
 ```bash
 bash scripts/release_check.sh <交接单>          # 硬闸门，exit 0 才可发布
+bash scripts/check_unregistered.sh              # 未登记改动探测（发布前必跑）
 bash scripts/deploy_backend.sh test             # 测试环境部署
 python3 scripts/s06_full_chain_test.py          # 全链路验证
 bash scripts/health_check.sh http://localhost:3003   # 健康检查（服务器）
 ```
+
+## Dev 会话收尾检查（构建即登记的自动执行点）
+
+每次 Dev（Trae/豆包）结束编码前，必须依次执行：
+1. `git status --short` —— 确认本次改动范围
+2. 若本地构建成功或代码已提交：**当场登记批次 + 交接单**（`docs/发布协作/交接单/REL-*-<任务编号>.md`），更新 `发布步骤清单.md` 状态为「待核对」
+3. 登记后跑 `bash scripts/check_unregistered.sh` 自检 —— 输出不再有本次任务相关 ❌ 才算收尾完成
+4. 收尾检查结果（登记时间/交接单路径）随交付说明一并告知 PM
 
 ## 项目速览
 
