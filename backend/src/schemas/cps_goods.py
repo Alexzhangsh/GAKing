@@ -110,6 +110,7 @@ class ConvertLinkResponse(BaseModel):
     """链接转链响应体"""
 
     promote_url: str = Field(..., description="CPS推广短链接")
+    tpwd: str = Field(default="", description="淘口令（淘宝App打开自动识别）")
     channel_pid: str = Field(default="", description="渠道PID")
     estimate_commission: float = Field(default=0.0, ge=0, description="预估佣金(元)")
     goods_id: str = Field(default="", description="商品唯一ID")

@@ -106,6 +106,8 @@ export interface ConvertLinkRequest {
 export interface ConvertLinkResponse {
   /** CPS推广短链接 */
   promote_url: string
+  /** 淘口令（淘宝App打开自动识别） */
+  tpwd: string
   /** 渠道PID */
   channel_pid: string
   /** 预估佣金(元) */

@@ -252,6 +252,7 @@ class CpsGoodsService:
 
         return ConvertLinkResponse(
             promote_url=convert_result.promote_url,
+            tpwd=convert_result.tpwd,
             channel_pid=convert_result.channel_pid,
             estimate_commission=float(convert_result.estimate_commission),
             goods_id=convert_result.goods_id,

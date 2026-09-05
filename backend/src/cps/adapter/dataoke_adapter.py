@@ -226,6 +226,7 @@ class DataokeAdapter(BaseCpsAdapter):
         result_data = data.get("data", {})
         convert_result = ConvertLinkResult(
             promote_url=str(result_data.get("share_url", "")),
+            tpwd=str(result_data.get("tpwd", "")),
             channel_pid=str(result_data.get("relation_id", user_channel_id)),
             estimate_commission=Decimal(str(result_data.get("commission", "0"))),
             goods_id=str(result_data.get("item_id", "")),

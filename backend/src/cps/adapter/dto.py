@@ -75,6 +75,7 @@ class ConvertLinkResult(BaseModel):
     """链接转链结果 DTO"""
 
     promote_url: str = Field(..., min_length=1, description="CPS 推广短链接")
+    tpwd: str = Field(default="", description="淘口令（淘宝App打开自动识别）")
     channel_pid: str = Field(default="", description="渠道 PID（推广员标识）")
     estimate_commission: Decimal = Field(
         default=Decimal("0"), ge=0, description="预估佣金（元）"

@@ -148,8 +148,8 @@
     <view v-if="copySuccessVisible" class="copy-success-mask" @click="dismissCopySuccess">
       <view class="copy-success-dialog" @click.stop>
         <view class="dialog-icon"><IconLine name="check" style="--size:88rpx;color:#ffd400" /></view>
-        <text class="dialog-title">链接已复制</text>
-        <text class="dialog-content">您已成功复制购买链接，请打开【{{ channelText }}】购买商品</text>
+        <text class="dialog-title">{{ copiedIsTpwd ? '淘口令已复制' : '链接已复制' }}</text>
+        <text class="dialog-content">{{ copiedIsTpwd ? '请打开【淘宝App】，将自动识别商品并跳转购买' : `您已成功复制购买链接，请打开【${channelText}】购买商品` }}</text>
         <!-- 时效提示 -->
         <view class="timeout-tip">
           <text class="timeout-icon"><IconLine name="clock" style="--size:28rpx;color:#e6a23c" /></text>
@@ -192,6 +192,7 @@ const isFav = ref(false)
 const errorText = ref('商品信息加载失败')
 
 const copySuccessVisible = ref(false)
+const copiedIsTpwd = ref(false)
 
 /** 商品图片列表（一期单图，预留多图） */
 const goodsImgList = computed(() => {
@@ -319,15 +320,25 @@ const handleConvertLink = () => {
   }
 }
 
-/** 复制购买链接 */
+/** 复制购买链接（优先复制淘口令，淘宝App打开自动识别） */
 const copyPromoteUrl = async () => {
-  if (!convertResult.value?.promote_url) {
+  if (!convertResult.value?.promote_url && !convertResult.value?.tpwd) {
     // 未转链则先转链
     await doConvertLink()
-    if (!convertResult.value?.promote_url) return
+    if (!convertResult.value?.promote_url && !convertResult.value?.tpwd) return
   }
-  const ok = await setClipboardData(convertResult.value.promote_url)
+  // 优先复制淘口令（淘宝App打开自动识别商品），无淘口令时复制推广链接
+  const hasTpwd = !!(convertResult.value?.tpwd && convertResult.value.tpwd.trim())
+  const copyContent = hasTpwd
+    ? convertResult.value!.tpwd
+    : (convertResult.value?.promote_url || '')
+  if (!copyContent) {
+    uni.showToast({ title: '无有效购买链接', icon: 'none' })
+    return
+  }
+  const ok = await setClipboardData(copyContent)
   if (ok) {
+    copiedIsTpwd.value = hasTpwd
     copySuccessVisible.value = true
   } else {
     uni.showToast({ title: '复制失败，请手动复制', icon: 'none' })
