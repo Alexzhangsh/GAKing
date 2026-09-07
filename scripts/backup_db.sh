@@ -4,6 +4,9 @@
 # 本地保留 7 天；obsutil 就绪时上传 OBS 并保留 30 天
 set -euo pipefail
 
+# cron 环境 PATH 默认不含 /usr/local/bin，obsutil 装在该目录会导致 OBS 上传被跳过（2026-09-07 修复）
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 ENV_FILE="/opt/gaking/backend/.env.production"
 BACKUP_DIR="/opt/gaking/backup"
 RETENTION_DAYS=7
